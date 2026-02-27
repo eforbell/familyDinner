@@ -99,20 +99,13 @@ app.get('/tonight', async (req, res) => {
     const orderIn = await orderInForDate(dateStr);
     const meal    = await mealForDate(now);
 
-    const isOrderIn  = !!(orderIn || (meal && meal.is_protected));
-    const name       = meal ? meal.name : 'Nothing planned';
-    const cook       = meal ? (meal.cook || '') : '';
-    const rating     = meal ? (meal.kid_rating || '') : '';
+    const isOrderIn = !!(orderIn || (meal && meal.is_protected));
+    const name      = meal ? meal.name : 'Nothing planned';
+    const cook      = meal ? (meal.cook || '') : '';
+    const rating    = meal ? (meal.kid_rating || '') : '';
 
-    // Build restaurant tally for order-in nights
-    let restaurantHtml = '';
-    if (orderIn && orderIn.votes.length) {
-      const leader = orderIn.votes[0];
-      restaurantHtml = `
-        <div class="leading">${leader.emoji} ${leader.name}${leader.count > 0 ? ` <span class="vote-count">(${leader.count})</span>` : ''}</div>
-        <div class="all-votes">${orderIn.votes.filter(v => v.count > 0).map(v =>
-          `<span>${v.emoji} ${v.name} ${v.count}</span>`).join(' · ')}</div>`;
-    }
+    // Embed restaurants + current votes as JSON for the client script
+    const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
 
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -123,38 +116,134 @@ app.get('/tonight', async (req, res) => {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #0f0f0f;
-      color: #fafaf9;
+      background: #0f0f0f; color: #fafaf9;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 2rem;
+      min-height: 100dvh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 2rem 1.5rem;
     }
-    .day { font-size: 1rem; color: #a8a29e; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 1rem; }
-    .label { font-size: 0.85rem; color: #f97316; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
-    .meal { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1.5rem; }
-    .meta { font-size: 1.8rem; }
-    .protected { color: #6b7280; font-size: 1.1rem; margin-top: 0.5rem; }
-    .leading { font-size: clamp(1.5rem, 5vw, 2.5rem); font-weight: 700; margin-top: 1rem; }
-    .vote-count { color: #a8a29e; font-size: 0.7em; }
-    .all-votes { color: #57534e; font-size: 0.85rem; margin-top: 0.75rem; }
-    .week-link { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); color: #57534e; font-size: 0.8rem; text-decoration: none; letter-spacing: 0.08em; border-bottom: 1px solid #3a3330; padding-bottom: 1px; transition: color .2s; }
+    .day   { font-size: 1rem; color: #a8a29e; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1rem; }
+    .label { font-size: .85rem; color: #f97316; letter-spacing: .2em; text-transform: uppercase; margin-bottom: .5rem; }
+    .meal  { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+    .meta  { font-size: 1.8rem; }
+    .sub   { color: #6b7280; font-size: 1rem; margin-bottom: 1.5rem; }
+    /* Restaurant voting grid */
+    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; width: 100%; max-width: 360px; margin: 1rem auto 0; }
+    .r-btn  {
+      background: #1c1917; border: 1px solid #3a3330; border-radius: 12px;
+      color: #fafaf9; cursor: pointer; font-family: inherit;
+      display: flex; flex-direction: column; align-items: center; gap: .2rem;
+      padding: .9rem .5rem; transition: border-color .15s, background .15s;
+    }
+    .r-btn:hover  { background: #292524; border-color: #57534e; }
+    .r-btn.active { border-color: #f97316; background: rgba(249,115,22,.12); }
+    .r-emoji  { font-size: 1.8rem; line-height: 1; }
+    .r-name   { font-size: .85rem; font-weight: 600; }
+    .r-count  { font-size: 1.1rem; font-weight: 700; color: #f97316; }
+    .r-voters { font-size: .7rem; color: #a8a29e; }
+    /* Member picker */
+    .picker { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .picker.hidden { display: none; }
+    .picker-box { background: #1c1917; border: 1px solid #3a3330; border-radius: 14px; padding: 1.5rem; width: 100%; max-width: 320px; }
+    .picker-box h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+    .m-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .m-btn  { background: #0f0f0f; border: 1px solid #3a3330; border-radius: 10px; color: #fafaf9; cursor: pointer; font-family: inherit; padding: .9rem .5rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; transition: border-color .15s; }
+    .m-btn:hover { border-color: #f97316; }
+    .m-avatar { font-size: 1.6rem; }
+    .week-link { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); color: #57534e; font-size: .8rem; text-decoration: none; letter-spacing: .08em; border-bottom: 1px solid #3a3330; padding-bottom: 1px; }
     .week-link:hover { color: #a8a29e; }
   </style>
-  <meta http-equiv="refresh" content="1800">
 </head>
 <body>
   <div class="day">${dayName}</div>
   <div class="label">Tonight's Dinner</div>
-  ${isOrderIn
-    ? `<div class="meal">Order In Night 🛵</div><div class="protected">No cooking tonight</div>${restaurantHtml}`
-    : `<div class="meal">${name}</div><div class="meta">${cook} ${rating}</div>`
-  }
+
+  ${isOrderIn ? `
+    <div class="meal">Order In Night 🛵</div>
+    <div class="sub">No cooking tonight — pick your spot</div>
+    <div class="r-grid" id="r-grid"></div>
+  ` : `
+    <div class="meal">${name}</div>
+    <div class="meta">${cook} ${rating}</div>
+  `}
+
+  ${isOrderIn ? `
+  <!-- Member picker overlay -->
+  <div class="picker hidden" id="picker">
+    <div class="picker-box">
+      <h2>Who are you?</h2>
+      <div class="m-grid" id="m-grid"></div>
+    </div>
+  </div>
+  ` : ''}
+
   <a href="/" class="week-link">see the full week →</a>
+
+  ${isOrderIn ? `
+  <script>
+    const DATE      = '${dateStr}';
+    const votes     = ${votesJson};
+    let me = JSON.parse(localStorage.getItem('fd_member') || 'null');
+    let members     = [];
+
+    async function init() {
+      const res = await fetch('/api/members');
+      members   = await res.json();
+      renderGrid(votes);
+    }
+
+    function myVote() {
+      return me ? votes.find(r => r.voters && r.voters.includes(me.name)) : null;
+    }
+
+    function renderGrid(v) {
+      const grid = document.getElementById('r-grid');
+      if (!grid) return;
+      const mv = me ? v.find(r => r.voters && r.voters.includes(me.name)) : null;
+      grid.innerHTML = v.map(r => \`
+        <button class="r-btn\${mv && mv.id === r.id ? ' active' : ''}"
+                onclick="castVote(\${r.id})">
+          <span class="r-emoji">\${r.emoji}</span>
+          <span class="r-name">\${r.name}</span>
+          \${r.count > 0 ? \`<span class="r-count">\${r.count}</span>\` : ''}
+          \${r.voters && r.voters.length ? \`<span class="r-voters">\${r.voters.join(', ')}</span>\` : ''}
+        </button>\`).join('');
+    }
+
+    async function castVote(restaurantId) {
+      if (!me) { openPicker(() => castVote(restaurantId)); return; }
+      const res  = await fetch(\`/api/order-in/\${DATE}/vote\`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurant_id: restaurantId, member_id: me.id }),
+      });
+      const data = await res.json();
+      if (data.order_in) renderGrid(data.order_in.votes);
+    }
+
+    function openPicker(cb) {
+      const picker = document.getElementById('picker');
+      const grid   = document.getElementById('m-grid');
+      picker.classList.remove('hidden');
+      grid.innerHTML = members.map(m => \`
+        <button class="m-btn" onclick="pickMember(\${m.id})">
+          <span class="m-avatar">\${m.avatar_emoji}</span>
+          <span>\${m.name}</span>
+        </button>\`).join('');
+      picker._cb = cb;
+    }
+
+    function pickMember(id) {
+      me = members.find(m => m.id === id);
+      localStorage.setItem('fd_member', JSON.stringify(me));
+      document.getElementById('picker').classList.add('hidden');
+      const cb = document.getElementById('picker')._cb;
+      if (cb) cb();
+    }
+
+    init();
+  </script>
+  ` : ''}
 </body>
 </html>`);
   } catch (err) {
