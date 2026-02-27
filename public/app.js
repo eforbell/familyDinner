@@ -426,6 +426,33 @@ function updateWhoBtn() {
   btn.title       = currentMember ? `You are ${currentMember.name} — tap to change` : 'Who are you?';
 }
 
+// ── Cook Log ──────────────────────────────────────────────────
+
+async function logMadeIt() {
+  if (!tonightMealId) return;
+  const btn = document.getElementById('made-it-btn');
+  if (!btn) return;
+
+  // Vanish immediately — Alex-proof
+  btn.disabled = true;
+  btn.textContent = '✓ Logged!';
+  btn.classList.add('logged');
+  setTimeout(() => btn.remove(), 1200);
+
+  try {
+    await fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        meal_id: tonightMealId,
+        planned_meal_id: tonightMealId,
+      }),
+    });
+  } catch (e) {
+    console.error('Log failed', e);
+  }
+}
+
 // ── Order-In ──────────────────────────────────────────────────
 
 async function declareOrderIn(date) {
@@ -478,24 +505,24 @@ async function voteRestaurant(date, restaurantId) {
 }
 
 function buildRestaurantVotesHtml(orderIn, date) {
-  if (!restaurants.length) return '';
-  const myVote = currentMember && orderIn.votes
-    ? orderIn.votes.find(r => r.voters && r.voters.includes(currentMember.name))
+  // Use votes embedded in the orderIn object — avoids race with /api/restaurants fetch
+  const voteData = (orderIn && orderIn.votes) ? orderIn.votes : [];
+  if (!voteData.length) return '<p class="muted" style="font-size:.85rem">No restaurants loaded.</p>';
+
+  const myVote = currentMember
+    ? voteData.find(r => r.voters && r.voters.includes(currentMember.name))
     : null;
 
   return `
     <div class="restaurant-grid">
-      ${restaurants.map(r => {
-        const tally = orderIn.votes ? orderIn.votes.find(v => v.id === r.id) : null;
-        const count = tally ? tally.count : 0;
-        const voters = tally ? (tally.voters || []) : [];
+      ${voteData.map(r => {
         const isMyVote = myVote && myVote.id === r.id;
         return `<button class="restaurant-btn${isMyVote ? ' active' : ''}"
                   onclick="voteRestaurant('${date}', ${r.id})">
           <span class="r-emoji">${r.emoji}</span>
           <span class="r-name">${esc(r.name)}</span>
-          ${count > 0 ? `<span class="r-count">${count}</span>` : ''}
-          ${voters.length ? `<span class="r-voters">${voters.join(', ')}</span>` : ''}
+          ${r.count > 0 ? `<span class="r-count">${r.count}</span>` : ''}
+          ${r.voters && r.voters.length ? `<span class="r-voters">${r.voters.join(', ')}</span>` : ''}
         </button>`;
       }).join('')}
     </div>
