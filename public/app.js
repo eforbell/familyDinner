@@ -2,6 +2,7 @@
 let currentMember = JSON.parse(localStorage.getItem('fd_member') || 'null');
 let weekData      = null;
 let allMeals      = [];
+let membersCache  = [];   // loaded once, keyed by id for picker
 let swapTarget    = null;  // { date, context }
 let todayDate     = null;
 let tonightMealId = null;
@@ -351,10 +352,10 @@ async function loadAndShowMembers() {
   const grid = list.querySelector('.member-grid');
 
   try {
-    const res     = await fetch('/api/members');
-    const members = await res.json();
-    grid.innerHTML = members.map(m =>
-      `<button class="member-btn" onclick="selectMember(${JSON.stringify(JSON.stringify(m))})">
+    const res  = await fetch('/api/members');
+    membersCache = await res.json();
+    grid.innerHTML = membersCache.map(m =>
+      `<button class="member-btn" onclick="selectMember(${m.id})">
         <span class="member-avatar">${m.avatar_emoji}</span>
         <span>${m.name}</span>
       </button>`
@@ -364,8 +365,9 @@ async function loadAndShowMembers() {
   }
 }
 
-function selectMember(memberJson) {
-  currentMember = JSON.parse(memberJson);
+function selectMember(id) {
+  currentMember = membersCache.find(m => m.id === id);
+  if (!currentMember) return;
   localStorage.setItem('fd_member', JSON.stringify(currentMember));
   updateWhoBtn();
   document.getElementById('member-overlay').classList.add('hidden');
