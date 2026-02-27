@@ -1,0 +1,15 @@
+[Unit]
+Description=Forbell Family Dinner App
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=forbell
+WorkingDirectory=/home/forbell/familyDinner
+EnvironmentFile=/home/forbell/familyDinner/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
