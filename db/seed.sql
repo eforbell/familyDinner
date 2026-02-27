@@ -1,5 +1,5 @@
 -- Family Dinner App — Seed Data
--- Run AFTER schema.sql: psql $DATABASE_URL -f db/seed.sql
+-- Run AFTER schema.sql: psql -U forbell -d family_dinner -h localhost -f db/seed.sql
 -- Safe to re-run (ON CONFLICT DO NOTHING on config)
 
 -- ============================================================
@@ -158,8 +158,8 @@ INSERT INTO meal_rotation (week_number, day_of_week, meal_id) VALUES
 INSERT INTO family_members (name, role, is_picky, hates_leftovers, avatar_emoji) VALUES
 ('Eric',      'parent', false, false, '👨‍🍳'),
 ('Alex',       'parent', false, false, '👩‍🍳'),
-('Son',       'kid',    false, true,  '🧑'),
-('Daughter',  'kid',    true,  false, '👧');
+('Jordan',  'kid', false, true,  '🧑'),
+('Casey', 'kid', true,  false, '👧');
 
 
 -- ============================================================

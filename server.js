@@ -103,6 +103,8 @@ app.get('/tonight', async (req, res) => {
     .meal { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1.5rem; }
     .meta { font-size: 1.8rem; }
     .protected { color: #6b7280; font-size: 1.1rem; margin-top: 1rem; }
+    .week-link { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); color: #57534e; font-size: 0.8rem; text-decoration: none; letter-spacing: 0.08em; border-bottom: 1px solid #3a3330; padding-bottom: 1px; transition: color .2s; }
+    .week-link:hover { color: #a8a29e; }
   </style>
   <meta http-equiv="refresh" content="1800">
 </head>
@@ -111,6 +113,7 @@ app.get('/tonight', async (req, res) => {
   <div class="label">Tonight's Dinner</div>
   <div class="meal">${name}</div>
   ${!isProtected ? `<div class="meta">${cook} ${rating}</div>` : '<div class="protected">Order in tonight 🛵</div>'}
+  <a href="/" class="week-link">see the full week →</a>
 </body>
 </html>`);
   } catch (err) {
