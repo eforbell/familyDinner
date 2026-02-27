@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Dinner 🍽️</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Member picker (first visit) -->
+  <div id="member-overlay" class="overlay hidden">
+    <div class="overlay-box">
+      <h2>Who are you?</h2>
+      <p>Pick your profile to vote on meals.</p>
+      <div id="member-list"></div>
+    </div>
+  </div>
+
+  <!-- Swap modal -->
+  <div id="swap-overlay" class="overlay hidden">
+    <div class="overlay-box">
+      <h2>Swap Meal</h2>
+      <p id="swap-day-label" class="muted"></p>
+      <select id="swap-select"></select>
+      <div class="overlay-actions">
+        <button id="swap-confirm-btn" class="btn-primary" onclick="confirmSwap()">Swap</button>
+        <button class="btn-ghost" onclick="closeSwap()">Cancel</button>
+        <button class="btn-danger" onclick="resetSwap()">Reset to default</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app">
+
+    <!-- Header -->
+    <header>
+      <span id="week-badge" class="week-badge"></span>
+      <h1>🍽️ Dinner</h1>
+      <button id="who-btn" class="who-btn" onclick="openMemberPicker()" title="Change who you are"></button>
+    </header>
+
+    <!-- TONIGHT hero -->
+    <section id="tonight-section">
+      <div id="tonight-card" class="tonight-card">
+        <div class="tonight-label">TONIGHT</div>
+        <div id="tonight-loading" class="loading-pulse">Loading…</div>
+        <div id="tonight-content" class="hidden">
+          <div id="tonight-day" class="tonight-day"></div>
+          <div id="tonight-name" class="tonight-name"></div>
+          <div id="tonight-meta" class="tonight-meta"></div>
+          <div id="tonight-notes" class="tonight-notes"></div>
+
+          <div class="tonight-actions">
+            <button id="tonight-details-btn" class="btn-ghost" onclick="toggleTonightDetails()">
+              Details ▾
+            </button>
+            <button class="btn-swap" onclick="openSwap(todayDate, 'tonight')">
+              Swap ⇄
+            </button>
+          </div>
+
+          <div id="tonight-details" class="detail-panel hidden">
+            <div id="tonight-tips" class="detail-tips"></div>
+            <div id="tonight-timing" class="detail-timing"></div>
+            <div id="tonight-equipment" class="detail-equipment"></div>
+            <div class="vote-section">
+              <div class="vote-label">React</div>
+              <div class="vote-buttons" id="tonight-votes"></div>
+              <div id="tonight-vote-display" class="vote-display"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Week view -->
+    <section id="week-section">
+      <h2 class="section-heading">This Week</h2>
+      <div id="week-grid" class="week-grid"></div>
+    </section>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
