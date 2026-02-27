@@ -163,6 +163,16 @@ INSERT INTO family_members (name, role, is_picky, hates_leftovers, avatar_emoji)
 
 
 -- ============================================================
+-- RESTAURANTS
+-- ============================================================
+INSERT INTO restaurants (name, emoji) VALUES
+  ('Chipotle',       '🌯'),
+  ('Panda Express',  '🥡'),
+  ('Pizza',          '🍕'),
+  ('McDonald''s',    '🍟');
+
+
+-- ============================================================
 -- APP CONFIG
 -- ============================================================
 -- rotation_start_date must be a Monday.

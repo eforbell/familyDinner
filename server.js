@@ -66,17 +66,53 @@ async function mealForDate(date) {
   return rows[0] || null;
 }
 
+/** Returns order-in status + restaurant vote tallies for a date, or null. */
+async function orderInForDate(dateStr) {
+  const { rows } = await pool.query(
+    'SELECT * FROM order_in_nights WHERE order_date = $1', [dateStr]
+  );
+  if (!rows.length) return null;
+
+  const { rows: votes } = await pool.query(
+    `SELECT r.id, r.name, r.emoji,
+            COUNT(rv.id)::int AS count,
+            COALESCE(ARRAY_AGG(f.name) FILTER (WHERE f.name IS NOT NULL), '{}') AS voters
+     FROM restaurants r
+     LEFT JOIN restaurant_votes rv ON rv.restaurant_id = r.id AND rv.order_date = $1
+     LEFT JOIN family_members f ON f.id = rv.member_id
+     WHERE r.active = true
+     GROUP BY r.id, r.name, r.emoji
+     ORDER BY count DESC, r.name`,
+    [dateStr]
+  );
+  return { ...rows[0], votes };
+}
+
 // ── Routes ───────────────────────────────────────────────────
 
 // /tonight — simple display page (Raspberry Pi / home screen shortcut)
 app.get('/tonight', async (req, res) => {
   try {
-    const meal = await mealForDate(new Date());
-    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    const name = meal ? meal.name : 'Nothing planned';
-    const cook = meal ? (meal.cook || '') : '';
-    const rating = meal ? (meal.kid_rating || '') : '';
-    const isProtected = meal ? meal.is_protected : false;
+    const now     = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
+    const orderIn = await orderInForDate(dateStr);
+    const meal    = await mealForDate(now);
+
+    const isOrderIn  = !!(orderIn || (meal && meal.is_protected));
+    const name       = meal ? meal.name : 'Nothing planned';
+    const cook       = meal ? (meal.cook || '') : '';
+    const rating     = meal ? (meal.kid_rating || '') : '';
+
+    // Build restaurant tally for order-in nights
+    let restaurantHtml = '';
+    if (orderIn && orderIn.votes.length) {
+      const leader = orderIn.votes[0];
+      restaurantHtml = `
+        <div class="leading">${leader.emoji} ${leader.name}${leader.count > 0 ? ` <span class="vote-count">(${leader.count})</span>` : ''}</div>
+        <div class="all-votes">${orderIn.votes.filter(v => v.count > 0).map(v =>
+          `<span>${v.emoji} ${v.name} ${v.count}</span>`).join(' · ')}</div>`;
+    }
 
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -102,7 +138,10 @@ app.get('/tonight', async (req, res) => {
     .label { font-size: 0.85rem; color: #f97316; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
     .meal { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1.5rem; }
     .meta { font-size: 1.8rem; }
-    .protected { color: #6b7280; font-size: 1.1rem; margin-top: 1rem; }
+    .protected { color: #6b7280; font-size: 1.1rem; margin-top: 0.5rem; }
+    .leading { font-size: clamp(1.5rem, 5vw, 2.5rem); font-weight: 700; margin-top: 1rem; }
+    .vote-count { color: #a8a29e; font-size: 0.7em; }
+    .all-votes { color: #57534e; font-size: 0.85rem; margin-top: 0.75rem; }
     .week-link { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); color: #57534e; font-size: 0.8rem; text-decoration: none; letter-spacing: 0.08em; border-bottom: 1px solid #3a3330; padding-bottom: 1px; transition: color .2s; }
     .week-link:hover { color: #a8a29e; }
   </style>
@@ -111,8 +150,10 @@ app.get('/tonight', async (req, res) => {
 <body>
   <div class="day">${dayName}</div>
   <div class="label">Tonight's Dinner</div>
-  <div class="meal">${name}</div>
-  ${!isProtected ? `<div class="meta">${cook} ${rating}</div>` : '<div class="protected">Order in tonight 🛵</div>'}
+  ${isOrderIn
+    ? `<div class="meal">Order In Night 🛵</div><div class="protected">No cooking tonight</div>${restaurantHtml}`
+    : `<div class="meal">${name}</div><div class="meta">${cook} ${rating}</div>`
+  }
   <a href="/" class="week-link">see the full week →</a>
 </body>
 </html>`);
@@ -124,13 +165,16 @@ app.get('/tonight', async (req, res) => {
 // GET /api/tonight — JSON (for home screen shortcuts / integrations)
 app.get('/api/tonight', async (req, res) => {
   try {
-    const now = new Date();
-    const meal = await mealForDate(now);
+    const now     = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const meal    = await mealForDate(now);
+    const orderIn = await orderInForDate(dateStr);
     res.json({
-      date: now.toISOString().split('T')[0],
+      date: dateStr,
       day_name: now.toLocaleDateString('en-US', { weekday: 'long' }),
       rotation_week: await rotationWeek(now),
       meal,
+      order_in: orderIn,
     });
   } catch (err) {
     console.error(err);
@@ -141,23 +185,27 @@ app.get('/api/tonight', async (req, res) => {
 // GET /api/week — full week view
 app.get('/api/week', async (req, res) => {
   try {
-    const now = new Date();
-    const monday = mondayOf(now);
-    const rw = await rotationWeek(now);
+    const now      = new Date();
+    const monday   = mondayOf(now);
+    const rw       = await rotationWeek(now);
     const todayStr = now.toISOString().split('T')[0];
 
     const days = [];
     for (let i = 0; i < 7; i++) {
-      const day = new Date(monday);
+      const day     = new Date(monday);
       day.setDate(monday.getDate() + i);
       const dateStr = day.toISOString().split('T')[0];
-      const meal = await mealForDate(day);
+      const [meal, orderIn] = await Promise.all([
+        mealForDate(day),
+        orderInForDate(dateStr),
+      ]);
       days.push({
         date: dateStr,
         day_name: day.toLocaleDateString('en-US', { weekday: 'long' }),
         day_of_week: i + 1,
         is_today: dateStr === todayStr,
         meal,
+        order_in: orderIn,
       });
     }
 
@@ -323,6 +371,63 @@ app.get('/api/energy', async (req, res) => {
       [weekStart]
     );
     res.json(rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/restaurants
+app.get('/api/restaurants', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM restaurants WHERE active = true ORDER BY name');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/order-in — declare a night as order-in
+app.post('/api/order-in', async (req, res) => {
+  const { date, created_by } = req.body;
+  if (!date) return res.status(400).json({ error: 'date required' });
+  try {
+    await pool.query(
+      `INSERT INTO order_in_nights (order_date, created_by)
+       VALUES ($1, $2)
+       ON CONFLICT (order_date) DO NOTHING`,
+      [date, created_by || null]
+    );
+    res.json({ success: true, order_in: await orderInForDate(date) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/order-in/:date — cancel order-in night
+app.delete('/api/order-in/:date', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM restaurant_votes WHERE order_date = $1', [req.params.date]);
+    await pool.query('DELETE FROM order_in_nights WHERE order_date = $1', [req.params.date]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/order-in/:date/vote — vote for a restaurant
+app.post('/api/order-in/:date/vote', async (req, res) => {
+  const { restaurant_id, member_id } = req.body;
+  if (!restaurant_id || !member_id) {
+    return res.status(400).json({ error: 'restaurant_id and member_id required' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO restaurant_votes (order_date, restaurant_id, member_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (order_date, member_id) DO UPDATE SET restaurant_id = $2, created_at = NOW()`,
+      [req.params.date, restaurant_id, member_id]
+    );
+    res.json({ success: true, order_in: await orderInForDate(req.params.date) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

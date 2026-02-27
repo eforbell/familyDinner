@@ -2,15 +2,16 @@
 let currentMember = JSON.parse(localStorage.getItem('fd_member') || 'null');
 let weekData      = null;
 let allMeals      = [];
-let membersCache  = [];   // loaded once, keyed by id for picker
-let swapTarget    = null;  // { date, context }
+let restaurants   = [];
+let membersCache  = [];
+let swapTarget    = null;
 let todayDate     = null;
 let tonightMealId = null;
 
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   updateWhoBtn();
-  await Promise.all([loadWeek(), loadAllMeals()]);
+  await Promise.all([loadWeek(), loadAllMeals(), loadRestaurants()]);
 
   if (!currentMember) {
     // First visit — show member picker after a brief delay so the page renders
@@ -37,6 +38,15 @@ async function loadAllMeals() {
     allMeals  = await res.json();
   } catch (e) {
     console.error('Failed to load meals', e);
+  }
+}
+
+async function loadRestaurants() {
+  try {
+    const res  = await fetch('/api/restaurants');
+    restaurants = await res.json();
+  } catch (e) {
+    console.error('Failed to load restaurants', e);
   }
 }
 
@@ -71,11 +81,22 @@ function renderTonight() {
 
   tonightMealId = meal.id;
 
-  if (meal.is_protected) {
+  const orderIn = today.order_in;
+
+  if (orderIn || (meal && meal.is_protected)) {
     document.getElementById('tonight-name').textContent = 'Order In Night 🛵';
-    document.getElementById('tonight-notes').textContent = meal.notes || '';
-    document.getElementById('tonight-meta').innerHTML = '<span class="muted">Protected night — no cooking</span>';
+    document.getElementById('tonight-notes').textContent = 'No cooking tonight.';
+    document.getElementById('tonight-meta').innerHTML = '';
     document.querySelector('.tonight-actions').classList.add('hidden');
+    // Show restaurant voting in the details panel
+    document.getElementById('tonight-details').classList.remove('hidden');
+    document.getElementById('tonight-details-btn').classList.add('hidden');
+    document.getElementById('tonight-tips').innerHTML = '';
+    document.getElementById('tonight-timing').innerHTML = '';
+    document.getElementById('tonight-equipment').textContent = '';
+    if (orderIn) {
+      renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, orderIn);
+    }
     return;
   }
 
@@ -119,14 +140,16 @@ function renderWeekGrid() {
 }
 
 function buildDayCard(day) {
-  const meal  = day.meal;
-  const prot  = meal && meal.is_protected;
-  const card  = document.createElement('div');
+  const meal    = day.meal;
+  const orderIn = day.order_in;
+  const prot    = !orderIn && meal && meal.is_protected;
+  const isOrderIn = !!(orderIn || prot);
+  const card    = document.createElement('div');
 
   card.className = [
     'day-card',
-    day.is_today   ? 'today'     : '',
-    prot           ? 'protected' : '',
+    day.is_today ? 'today'     : '',
+    isOrderIn    ? 'order-in'  : '',
   ].join(' ').trim();
 
   card.dataset.date   = day.date;
@@ -136,15 +159,16 @@ function buildDayCard(day) {
     .toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
 
   let mealHtml;
-  if (!meal) {
+  if (isOrderIn) {
+    const leader = orderIn && orderIn.votes && orderIn.votes.find(v => v.count > 0);
+    mealHtml = `<span class="day-meal-name order-in-label">🛵 Order In${leader ? ` · ${leader.emoji} ${leader.name}` : ''}</span>`;
+  } else if (!meal) {
     mealHtml = '<span class="day-meal-name muted">—</span>';
-  } else if (prot) {
-    mealHtml = '<span class="day-meal-name protected-night">Order In 🛵</span>';
   } else {
     mealHtml = `<span class="day-meal-name">${esc(meal.name)}</span>`;
   }
 
-  const metaHtml = meal && !prot
+  const metaHtml = meal && !isOrderIn
     ? `<span style="font-size:1rem">${meal.cook || ''}</span>
        <span style="font-size:0.95rem">${ratingEmoji(meal.kid_rating)}</span>
        ${meal.is_override ? '<span class="override-badge">swapped</span>' : ''}
@@ -158,27 +182,45 @@ function buildDayCard(day) {
       <div class="day-meta">${metaHtml}</div>
     </div>
     <div class="day-expand-panel" id="panel-${day.date}">
-      ${prot ? '' : buildDayExpandHtml(day)}
+      ${buildDayExpandHtml(day)}
     </div>
   `;
 
-  if (!prot) {
-    card.querySelector('.day-card-header').addEventListener('click', () =>
-      toggleDayPanel(day.date)
-    );
-  }
+  card.querySelector('.day-card-header').addEventListener('click', () =>
+    toggleDayPanel(day.date)
+  );
 
   return card;
 }
 
 function buildDayExpandHtml(day) {
-  const meal = day.meal;
+  const meal    = day.meal;
+  const orderIn = day.order_in;
+  const prot    = !orderIn && meal && meal.is_protected;
+
+  // Order-in night: show restaurant picker
+  if (orderIn) {
+    return `
+      <div id="restaurant-votes-${day.date}">
+        ${buildRestaurantVotesHtml(orderIn, day.date)}
+      </div>
+      <div class="day-actions" style="margin-top:.75rem">
+        <button class="btn-danger" onclick="cancelOrderIn('${day.date}')">Cancel order-in</button>
+      </div>
+    `;
+  }
+
+  // Protected Thursday — just the order-in toggle
+  if (prot) {
+    return `<p class="muted" style="font-size:.85rem;margin-bottom:.75rem">Protected night — no cooking.</p>`;
+  }
+
   if (!meal) return '<p class="muted" style="font-size:.85rem">Nothing planned.</p>';
 
-  const notes   = meal.notes    ? `<div class="day-notes">${esc(meal.notes)}</div>` : '';
-  const tips    = meal.recipe_tips ? `<div class="day-tips">${esc(meal.recipe_tips)}</div>` : '';
-  const timing  = buildTimingHtml(meal);
-  const equip   = meal.equipment && meal.equipment.length
+  const notes  = meal.notes       ? `<div class="day-notes">${esc(meal.notes)}</div>` : '';
+  const tips   = meal.recipe_tips ? `<div class="day-tips">${esc(meal.recipe_tips)}</div>` : '';
+  const timing = buildTimingHtml(meal);
+  const equip  = meal.equipment && meal.equipment.length
     ? `<div class="timing-chip" style="display:inline-block;margin-top:.3rem">🍳 ${esc(meal.equipment.join(', '))}</div>` : '';
 
   return `
@@ -189,6 +231,7 @@ function buildDayExpandHtml(day) {
     <div class="day-actions" style="margin-top:.75rem">
       <div class="vote-buttons" id="day-votes-${day.date}"></div>
       <button class="btn-swap" onclick="openSwap('${day.date}', 'day')">Swap ⇄</button>
+      <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
     </div>
     <div class="day-vote-display" id="day-vote-display-${day.date}"></div>
   `;
@@ -381,6 +424,89 @@ function updateWhoBtn() {
   const btn = document.getElementById('who-btn');
   btn.textContent = currentMember ? currentMember.avatar_emoji : '👤';
   btn.title       = currentMember ? `You are ${currentMember.name} — tap to change` : 'Who are you?';
+}
+
+// ── Order-In ──────────────────────────────────────────────────
+
+async function declareOrderIn(date) {
+  try {
+    await fetch('/api/order-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, created_by: currentMember ? currentMember.name : null }),
+    });
+    await loadWeek();
+  } catch (e) {
+    console.error('Failed to declare order-in', e);
+  }
+}
+
+async function cancelOrderIn(date) {
+  try {
+    await fetch(`/api/order-in/${date}`, { method: 'DELETE' });
+    await loadWeek();
+  } catch (e) {
+    console.error('Failed to cancel order-in', e);
+  }
+}
+
+async function voteRestaurant(date, restaurantId) {
+  if (!currentMember) {
+    openMemberPicker(() => voteRestaurant(date, restaurantId));
+    return;
+  }
+  try {
+    const res  = await fetch(`/api/order-in/${date}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurant_id: restaurantId, member_id: currentMember.id }),
+    });
+    const data = await res.json();
+    if (data.order_in) {
+      // Refresh just this day's panel
+      const panel = document.getElementById(`restaurant-votes-${date}`);
+      if (panel) panel.innerHTML = buildRestaurantVotesHtml(data.order_in, date);
+      // Also refresh tonight if it's today
+      const todayEntry = weekData && weekData.days.find(d => d.is_today);
+      if (todayEntry && todayEntry.date === date) {
+        renderRestaurantVotes('tonight-votes', 'tonight-vote-display', date, data.order_in);
+      }
+    }
+  } catch (e) {
+    console.error('Restaurant vote failed', e);
+  }
+}
+
+function buildRestaurantVotesHtml(orderIn, date) {
+  if (!restaurants.length) return '';
+  const myVote = currentMember && orderIn.votes
+    ? orderIn.votes.find(r => r.voters && r.voters.includes(currentMember.name))
+    : null;
+
+  return `
+    <div class="restaurant-grid">
+      ${restaurants.map(r => {
+        const tally = orderIn.votes ? orderIn.votes.find(v => v.id === r.id) : null;
+        const count = tally ? tally.count : 0;
+        const voters = tally ? (tally.voters || []) : [];
+        const isMyVote = myVote && myVote.id === r.id;
+        return `<button class="restaurant-btn${isMyVote ? ' active' : ''}"
+                  onclick="voteRestaurant('${date}', ${r.id})">
+          <span class="r-emoji">${r.emoji}</span>
+          <span class="r-name">${esc(r.name)}</span>
+          ${count > 0 ? `<span class="r-count">${count}</span>` : ''}
+          ${voters.length ? `<span class="r-voters">${voters.join(', ')}</span>` : ''}
+        </button>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderRestaurantVotes(btnContainerId, displayId, date, orderIn) {
+  const container = document.getElementById(btnContainerId);
+  const display   = document.getElementById(displayId);
+  if (container) container.innerHTML = buildRestaurantVotesHtml(orderIn, date);
+  if (display)   display.innerHTML = '';
 }
 
 // ── Helpers ───────────────────────────────────────────────────

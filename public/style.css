@@ -471,6 +471,53 @@ button { cursor: pointer; font-family: inherit; }
 .member-btn:hover { border-color: var(--accent); background: rgba(249,115,22,.07); }
 .member-avatar { font-size: 1.8rem; }
 
+/* ── Order-In ─────────────────────────────────────────── */
+.day-card.order-in { border-color: #4b5563; }
+.day-card.order-in.today { border-color: var(--accent); }
+
+.order-in-label { color: var(--muted); }
+
+.btn-order-in {
+  background: transparent;
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.9rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-order-in:hover { border-color: var(--dim); color: var(--text); }
+
+.restaurant-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.restaurant-btn {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0.5rem;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit;
+}
+.restaurant-btn:hover  { border-color: var(--dim); background: var(--surface2); }
+.restaurant-btn.active { border-color: var(--accent); background: rgba(249,115,22,.1); }
+
+.r-emoji  { font-size: 1.5rem; line-height: 1; }
+.r-name   { font-size: 0.8rem; font-weight: 600; }
+.r-count  { font-size: 1rem; font-weight: 700; color: var(--accent); }
+.r-voters { font-size: 0.7rem; color: var(--muted); }
+
 /* ── Utilities ────────────────────────────────────────── */
 .hidden { display: none !important; }
 .muted  { color: var(--muted); }
