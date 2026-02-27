@@ -112,7 +112,12 @@ app.get('/tonight', async (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tonight's Dinner</title>
+  <title>Tonight's Dinner 🍽️</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="Tonight's Dinner">
+  <meta property="og:description" content="${isOrderIn ? 'Order in night — vote for where!' : name}">
+  <meta property="og:image" content="/og-image.svg">
+  <meta property="og:type" content="website">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
