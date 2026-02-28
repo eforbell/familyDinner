@@ -95,6 +95,48 @@ Example:
 
 There is also a sample systemd unit in `deploy/family-dinner.service`.
 
+### Deploy Script Usage
+
+`deploy/deploy.sh` accepts either a single ref or a `remote branch` pair:
+
+```bash
+./deploy/deploy.sh
+./deploy/deploy.sh origin/main
+./deploy/deploy.sh feat/subpath-support
+./deploy/deploy.sh origin feat/subpath-support
+```
+
+Normal flow on the server:
+
+```bash
+git fetch origin
+./deploy/deploy.sh origin/main
+```
+
+If the deploy script itself changes, `git fetch` alone does not update the checked-out `deploy/deploy.sh` file. In that case, update the checkout to a commit containing the new script once, then resume the normal `fetch + deploy` flow.
+
+### Hosting Under a Subpath
+
+The browser assets and API calls are written to work both at `/` and behind an nginx location prefix such as `/dinner/`.
+
+Example nginx setup:
+
+```nginx
+location /dinner/ {
+    proxy_pass http://127.0.0.1:3000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /dinner {
+    return 301 /dinner/;
+}
+```
+
+Important: the trailing slash on `proxy_pass http://127.0.0.1:3000/;` is what strips the `/dinner/` prefix before forwarding to Express.
+
 ## Notes
 
 - The 3-week plan repeats forever until you edit `meal_rotation`
