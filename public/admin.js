@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadRotation() {
   try {
-    const res = await fetch('/api/rotation');
+    const res = await fetch('api/rotation');
     rotationData = await res.json();
     renderRotation();
   } catch (err) {
@@ -99,7 +99,7 @@ document.addEventListener('submit', async event => {
   saveBtn.textContent = 'Saving...';
 
   try {
-    const res = await fetch('/api/rotation-slot', {
+    const res = await fetch('api/rotation-slot', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

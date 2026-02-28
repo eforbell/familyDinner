@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadMeals() {
   try {
-    const res = await fetch('/api/rotation');
+    const res = await fetch('../api/rotation');
     const data = await res.json();
     meals = [...data.meals].sort((a, b) => a.name.localeCompare(b.name));
     filteredMeals = meals;
@@ -69,7 +69,7 @@ function applySearch() {
 
 async function selectMeal(mealId) {
   try {
-    const res = await fetch(`/api/meals/${mealId}`);
+    const res = await fetch(`../api/meals/${mealId}`);
     const meal = await res.json();
     if (!res.ok) throw new Error(meal.error || 'Could not load meal');
 
@@ -134,7 +134,7 @@ async function saveMeal(event) {
   };
 
   const method = selectedMealId ? 'PUT' : 'POST';
-  const url = selectedMealId ? `/api/meals/${selectedMealId}` : '/api/meals';
+  const url = selectedMealId ? `../api/meals/${selectedMealId}` : '../api/meals';
 
   try {
     const res = await fetch(url, {
@@ -159,7 +159,7 @@ async function deleteMeal() {
   if (!window.confirm('Delete this meal? This only works if it is not used anywhere yet.')) return;
 
   try {
-    const res = await fetch(`/api/meals/${selectedMealId}`, { method: 'DELETE' });
+    const res = await fetch(`../api/meals/${selectedMealId}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 
@@ -173,7 +173,7 @@ async function deleteMeal() {
 
 async function loadMagicSettings() {
   try {
-    const res = await fetch('/api/magic-meal/settings');
+    const res = await fetch('../api/magic-meal/settings');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not load Magic Meal settings');
     document.getElementById('magic-meal-prompt').value = data.magic_meal_prompt || '';
@@ -193,7 +193,7 @@ async function saveMagicSettings() {
 
 async function persistMagicSettings(showStatus) {
   const prompt = document.getElementById('magic-meal-prompt').value;
-  const res = await fetch('/api/magic-meal/settings', {
+  const res = await fetch('../api/magic-meal/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ magic_meal_prompt: prompt }),
@@ -214,7 +214,7 @@ async function generateMagicMeal() {
   try {
     await persistMagicSettings(false);
 
-    const res = await fetch('/api/magic-meal', {
+    const res = await fetch('../api/magic-meal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

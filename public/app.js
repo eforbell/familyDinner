@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ── Data Fetching ─────────────────────────────────────────────
 async function loadWeek() {
   try {
-    const res  = await fetch('/api/week');
+    const res  = await fetch('api/week');
     weekData   = await res.json();
     renderWeekBadge();
     renderTonight();
@@ -34,7 +34,7 @@ async function loadWeek() {
 async function loadAllMeals() {
   if (allMeals.length) return allMeals;
   try {
-    const res = await fetch('/api/meals');
+    const res = await fetch('api/meals');
     allMeals  = await res.json();
     return allMeals;
   } catch (e) {
@@ -268,7 +268,7 @@ async function castVote(mealId, reaction, btnContainerId, displayId) {
     return;
   }
   try {
-    const res  = await fetch('/api/vote', {
+    const res  = await fetch('api/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ meal_id: mealId, member_id: currentMember.id, reaction }),
@@ -286,7 +286,7 @@ async function refreshVoteDisplay(displayId, mealId, btnContainerId, votes) {
 
   if (!votes) {
     try {
-      const res = await fetch(`/api/votes/${mealId}`);
+      const res = await fetch(`api/votes/${mealId}`);
       votes = await res.json();
     } catch { return; }
   }
@@ -347,7 +347,7 @@ async function confirmSwap() {
   if (!swapTarget) return;
   const mealId = document.getElementById('swap-select').value;
   try {
-    await fetch('/api/swap', {
+    await fetch('api/swap', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -366,7 +366,7 @@ async function confirmSwap() {
 async function resetSwap() {
   if (!swapTarget) return;
   try {
-    await fetch(`/api/swap/${swapTarget.date}`, { method: 'DELETE' });
+    await fetch(`api/swap/${swapTarget.date}`, { method: 'DELETE' });
     closeSwap();
     await loadWeek();
   } catch (e) {
@@ -390,7 +390,7 @@ async function loadAndShowMembers() {
 
   try {
     if (!membersCache.length) {
-      const res  = await fetch('/api/members');
+      const res  = await fetch('api/members');
       membersCache = await res.json();
     }
     grid.innerHTML = membersCache.map(m =>
@@ -436,7 +436,7 @@ async function logMadeIt() {
   setTimeout(() => btn.remove(), 1200);
 
   try {
-    await fetch('/api/log', {
+    await fetch('api/log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -453,7 +453,7 @@ async function logMadeIt() {
 
 async function declareOrderIn(date) {
   try {
-    await fetch('/api/order-in', {
+    await fetch('api/order-in', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ date, created_by: currentMember ? currentMember.name : null }),
@@ -466,7 +466,7 @@ async function declareOrderIn(date) {
 
 async function cancelOrderIn(date) {
   try {
-    await fetch(`/api/order-in/${date}`, { method: 'DELETE' });
+    await fetch(`api/order-in/${date}`, { method: 'DELETE' });
     await loadWeek();
   } catch (e) {
     console.error('Failed to cancel order-in', e);
@@ -479,7 +479,7 @@ async function voteRestaurant(date, restaurantId) {
     return;
   }
   try {
-    const res  = await fetch(`/api/order-in/${date}/vote`, {
+    const res  = await fetch(`api/order-in/${date}/vote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ restaurant_id: restaurantId, member_id: currentMember.id }),
