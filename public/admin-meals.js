@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('magic-grocery-generate-btn').addEventListener('click', generateMagicGrocery);
   document.getElementById('save-grocery-settings-btn').addEventListener('click', saveMagicGrocerySettings);
   document.getElementById('print-grocery-btn').addEventListener('click', printMagicGrocery);
+  document.getElementById('magic-grocery-week-date').addEventListener('change', updateMagicGroceryWeekRange);
+  document.getElementById('magic-grocery-this-week-btn').addEventListener('click', setMagicGroceryWeekToThisWeek);
+  document.getElementById('magic-grocery-next-week-btn').addEventListener('click', setMagicGroceryWeekToNextWeek);
+  initializeMagicGroceryWeekPicker();
   loadMeals();
   loadMagicSettings();
   loadMagicGrocerySettings();
@@ -306,6 +310,7 @@ async function generateMagicGrocery() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         request_notes: document.getElementById('magic-grocery-notes').value,
+        week_start_date: document.getElementById('magic-grocery-week-date').value,
       }),
     });
     const data = await res.json();
@@ -346,7 +351,7 @@ function renderMagicGroceryResult(data) {
 
   list.textContent = lines.join('\n').trim();
   document.getElementById('magic-grocery-summary').textContent =
-    `Built from ${data.context_summary.meal_count} planned cook-at-home meals starting ${data.context_summary.week_start}.`;
+    `Built from ${data.context_summary.meal_count} planned cook-at-home meals for ${data.context_summary.week_start} → ${data.context_summary.week_end}.`;
 }
 
 function printMagicGrocery() {
@@ -371,6 +376,70 @@ function printMagicGrocery() {
   // Fallback for browsers that do not fire afterprint reliably
   setTimeout(cleanup, 1200);
   window.print();
+}
+
+function initializeMagicGroceryWeekPicker() {
+  const input = document.getElementById('magic-grocery-week-date');
+  if (!input) return;
+  input.value = toDateInputValue(new Date());
+  updateMagicGroceryWeekRange();
+}
+
+function setMagicGroceryWeekToThisWeek() {
+  const input = document.getElementById('magic-grocery-week-date');
+  if (!input) return;
+  input.value = toDateInputValue(new Date());
+  updateMagicGroceryWeekRange();
+}
+
+function setMagicGroceryWeekToNextWeek() {
+  const input = document.getElementById('magic-grocery-week-date');
+  if (!input) return;
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  input.value = toDateInputValue(d);
+  updateMagicGroceryWeekRange();
+}
+
+function updateMagicGroceryWeekRange() {
+  const input = document.getElementById('magic-grocery-week-date');
+  const out = document.getElementById('magic-grocery-week-range');
+  if (!input || !out || !input.value) return;
+
+  const selected = parseInputDate(input.value);
+  const start = mondayOf(selected);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+
+  out.textContent = `Week range: ${formatLongDate(start)} → ${formatLongDate(end)}`;
+}
+
+function mondayOf(date) {
+  const d = new Date(date);
+  d.setHours(12, 0, 0, 0);
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return d;
+}
+
+function parseInputDate(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12);
+}
+
+function toDateInputValue(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatLongDate(date) {
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function setStatus(message, isError) {

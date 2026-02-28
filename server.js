@@ -367,9 +367,14 @@ async function getMagicGroceryContext(date) {
       cook: day.meal.cook,
     }));
 
+  const weekStartDate = parseDateOnly(week.week_start);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekEndDate.getDate() + 6);
+
   return {
     settings,
     week_start: week.week_start,
+    week_end: localDateString(weekEndDate),
     rotation_week: week.rotation_week,
     planned_meals: plannedMeals,
   };
@@ -390,6 +395,7 @@ async function generateMagicGroceryList(targetDate, requestNotes = '') {
       },
       context_summary: {
         week_start: context.week_start,
+        week_end: context.week_end,
         meal_count: 0,
         prompt_used: context.settings.magic_grocery_prompt,
       },
@@ -505,6 +511,7 @@ async function generateMagicGroceryList(targetDate, requestNotes = '') {
     list,
     context_summary: {
       week_start: context.week_start,
+      week_end: context.week_end,
       meal_count: context.planned_meals.length,
       prompt_used: context.settings.magic_grocery_prompt,
     },

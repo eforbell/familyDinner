@@ -86,6 +86,17 @@
           </div>
 
           <label class="form-field">
+            <span>Target week (pick any date in that week)</span>
+            <input id="magic-grocery-week-date" type="date">
+            <small id="magic-grocery-week-range" class="muted"></small>
+          </label>
+
+          <div class="meal-form-actions">
+            <button id="magic-grocery-this-week-btn" class="btn-ghost" type="button">Use this week</button>
+            <button id="magic-grocery-next-week-btn" class="btn-ghost" type="button">Use next week</button>
+          </div>
+
+          <label class="form-field">
             <span>One-time grocery notes</span>
             <textarea id="magic-grocery-notes" rows="3" placeholder="Optional. Example: we're low on staples, avoid expensive proteins this week."></textarea>
           </label>
