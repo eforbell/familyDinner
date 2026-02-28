@@ -358,31 +358,19 @@ function printMagicGrocery() {
   const title = lastGroceryList.title || 'Weekly Grocery List';
   const body = document.getElementById('magic-grocery-list').textContent || '';
 
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!printWindow) {
-    setStatus('Pop-up blocked. Allow pop-ups to open print view.', true);
-    return;
-  }
+  document.getElementById('print-grocery-title').textContent = title;
+  document.getElementById('print-grocery-body').textContent = body;
 
-  printWindow.document.write(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${esc(title)}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 24px; color: #111; }
-    h1 { margin: 0 0 14px; font-size: 1.5rem; }
-    pre { white-space: pre-wrap; font-family: inherit; font-size: 1rem; line-height: 1.45; margin: 0; }
-    @page { size: auto; margin: 12mm; }
-  </style>
-</head>
-<body>
-  <h1>${esc(title)}</h1>
-  <pre>${esc(body)}</pre>
-  <script>window.onload = () => { window.print(); };</script>
-</body>
-</html>`);
-  printWindow.document.close();
+  const cleanup = () => {
+    document.body.classList.remove('print-grocery-mode');
+  };
+
+  document.body.classList.add('print-grocery-mode');
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  // Fallback for browsers that do not fire afterprint reliably
+  setTimeout(cleanup, 1200);
+  window.print();
 }
 
 function setStatus(message, isError) {
