@@ -6,6 +6,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -21,6 +22,26 @@ function mondayOf(date) {
   return d;
 }
 
+function parseDateOnly(value) {
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate(), 12);
+  }
+
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day, 12);
+  }
+
+  return new Date(value);
+}
+
+function localDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /** ISO day-of-week: Mon=1 … Sun=7 */
 function isoDay(date) {
   const d = date.getDay();
@@ -34,14 +55,14 @@ async function rotationWeek(date) {
     "SELECT value FROM app_config WHERE key = 'rotation_start_date'"
   );
   if (!rows.length) return 1;
-  const start = mondayOf(new Date(rows[0].value));
+  const start = mondayOf(parseDateOnly(rows[0].value));
   const weeks = Math.round((monday - start) / (7 * 86400 * 1000));
   return ((weeks % 3) + 3) % 3 + 1;
 }
 
 /** Fetch the meal for a given date, respecting daily overrides. */
 async function mealForDate(date) {
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = localDateString(date);
   const rw = await rotationWeek(date);
   const dow = isoDay(date);
 
@@ -88,16 +109,114 @@ async function orderInForDate(dateStr) {
   return { ...rows[0], votes };
 }
 
+async function weekDataForDate(date) {
+  const now      = new Date(date);
+  const monday   = mondayOf(now);
+  const sunday   = new Date(monday);
+  const todayStr = localDateString(now);
+
+  sunday.setDate(monday.getDate() + 6);
+
+  const weekStart = localDateString(monday);
+  const weekEnd   = localDateString(sunday);
+  const rw        = await rotationWeek(now);
+
+  const [{ rows: rotationRows }, { rows: overrideRows }, { rows: orderInRows }] = await Promise.all([
+    pool.query(
+      `SELECT r.day_of_week, m.*, false AS is_override
+       FROM meal_rotation r
+       JOIN meals m ON m.id = r.meal_id
+       WHERE r.week_number = $1
+       ORDER BY r.day_of_week`,
+      [rw]
+    ),
+    pool.query(
+      `SELECT o.override_date, o.note AS override_note, m.*, true AS is_override
+       FROM daily_overrides o
+       JOIN meals m ON m.id = o.override_meal_id
+       WHERE o.override_date BETWEEN $1 AND $2`,
+      [weekStart, weekEnd]
+    ),
+    pool.query(
+      `SELECT o.order_date, o.id AS order_in_id, o.created_by, o.created_at,
+              r.id, r.name, r.emoji,
+              COUNT(rv.id)::int AS count,
+              COALESCE(ARRAY_AGG(f.name) FILTER (WHERE f.name IS NOT NULL), '{}') AS voters
+       FROM order_in_nights o
+       JOIN restaurants r ON r.active = true
+       LEFT JOIN restaurant_votes rv
+         ON rv.order_date = o.order_date
+        AND rv.restaurant_id = r.id
+       LEFT JOIN family_members f ON f.id = rv.member_id
+       WHERE o.order_date BETWEEN $1 AND $2
+       GROUP BY o.order_date, o.id, o.created_by, o.created_at, r.id, r.name, r.emoji
+       ORDER BY o.order_date, count DESC, r.name`,
+      [weekStart, weekEnd]
+    ),
+  ]);
+
+  const rotationByDay = new Map(rotationRows.map(row => [row.day_of_week, row]));
+  const overridesByDate = new Map(
+    overrideRows.map(row => [localDateString(parseDateOnly(row.override_date)), row])
+  );
+  const orderInByDate = new Map();
+
+  for (const row of orderInRows) {
+    const dateStr = localDateString(parseDateOnly(row.order_date));
+    if (!orderInByDate.has(dateStr)) {
+      orderInByDate.set(dateStr, {
+        id: row.order_in_id,
+        order_date: dateStr,
+        created_by: row.created_by,
+        created_at: row.created_at,
+        votes: [],
+      });
+    }
+
+    orderInByDate.get(dateStr).votes.push({
+      id: row.id,
+      name: row.name,
+      emoji: row.emoji,
+      count: row.count,
+      voters: row.voters,
+    });
+  }
+
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + i);
+
+    const dateStr = localDateString(day);
+    days.push({
+      date: dateStr,
+      day_name: day.toLocaleDateString('en-US', { weekday: 'long' }),
+      day_of_week: i + 1,
+      is_today: dateStr === todayStr,
+      meal: overridesByDate.get(dateStr) || rotationByDay.get(i + 1) || null,
+      order_in: orderInByDate.get(dateStr) || null,
+    });
+  }
+
+  return {
+    rotation_week: rw,
+    week_start: weekStart,
+    days,
+  };
+}
+
 // ── Routes ───────────────────────────────────────────────────
 
 // /tonight — simple display page (Raspberry Pi / home screen shortcut)
 app.get('/tonight', async (req, res) => {
   try {
     const now     = new Date();
-    const dateStr = now.toISOString().split('T')[0];
+    const week    = await weekDataForDate(now);
+    const today   = week.days.find(day => day.is_today);
+    const dateStr = localDateString(now);
     const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
-    const orderIn = await orderInForDate(dateStr);
-    const meal    = await mealForDate(now);
+    const orderIn = today ? today.order_in : null;
+    const meal    = today ? today.meal : null;
 
     const isOrderIn = !!(orderIn || (meal && meal.is_protected));
     const name      = meal ? meal.name : 'Nothing planned';
@@ -260,15 +379,15 @@ app.get('/tonight', async (req, res) => {
 app.get('/api/tonight', async (req, res) => {
   try {
     const now     = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const meal    = await mealForDate(now);
-    const orderIn = await orderInForDate(dateStr);
+    const week    = await weekDataForDate(now);
+    const today   = week.days.find(day => day.is_today);
+    const dateStr = localDateString(now);
     res.json({
       date: dateStr,
       day_name: now.toLocaleDateString('en-US', { weekday: 'long' }),
-      rotation_week: await rotationWeek(now),
-      meal,
-      order_in: orderIn,
+      rotation_week: week.rotation_week,
+      meal: today ? today.meal : null,
+      order_in: today ? today.order_in : null,
     });
   } catch (err) {
     console.error(err);
@@ -279,35 +398,7 @@ app.get('/api/tonight', async (req, res) => {
 // GET /api/week — full week view
 app.get('/api/week', async (req, res) => {
   try {
-    const now      = new Date();
-    const monday   = mondayOf(now);
-    const rw       = await rotationWeek(now);
-    const todayStr = now.toISOString().split('T')[0];
-
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      const day     = new Date(monday);
-      day.setDate(monday.getDate() + i);
-      const dateStr = day.toISOString().split('T')[0];
-      const [meal, orderIn] = await Promise.all([
-        mealForDate(day),
-        orderInForDate(dateStr),
-      ]);
-      days.push({
-        date: dateStr,
-        day_name: day.toLocaleDateString('en-US', { weekday: 'long' }),
-        day_of_week: i + 1,
-        is_today: dateStr === todayStr,
-        meal,
-        order_in: orderIn,
-      });
-    }
-
-    res.json({
-      rotation_week: rw,
-      week_start: monday.toISOString().split('T')[0],
-      days,
-    });
+    res.json(await weekDataForDate(new Date()));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -324,12 +415,107 @@ app.get('/api/meals', async (req, res) => {
   }
 });
 
+// GET /api/rotation — recurring 3-week plan plus meal catalog
+app.get('/api/rotation', async (req, res) => {
+  try {
+    const [{ rows: slots }, { rows: meals }, { rows: config }] = await Promise.all([
+      pool.query(
+        `SELECT r.week_number, r.day_of_week, r.meal_id,
+                m.name, m.cook, m.kid_rating, m.is_protected, m.is_new
+         FROM meal_rotation r
+         LEFT JOIN meals m ON m.id = r.meal_id
+         ORDER BY r.week_number, r.day_of_week`
+      ),
+      pool.query(
+        `SELECT id, name, cook, kid_rating, is_protected, is_new
+         FROM meals
+         ORDER BY name`
+      ),
+      pool.query(
+        "SELECT value FROM app_config WHERE key = 'rotation_start_date'"
+      ),
+    ]);
+
+    const weeks = [1, 2, 3].map(weekNumber => ({
+      week_number: weekNumber,
+      days: DAY_NAMES.map((dayName, index) => {
+        const slot = slots.find(row => row.week_number === weekNumber && row.day_of_week === index + 1);
+        return {
+          day_of_week: index + 1,
+          day_name: dayName,
+          meal_id: slot ? slot.meal_id : null,
+          meal: slot && slot.meal_id ? {
+            id: slot.meal_id,
+            name: slot.name,
+            cook: slot.cook,
+            kid_rating: slot.kid_rating,
+            is_protected: slot.is_protected,
+            is_new: slot.is_new,
+          } : null,
+        };
+      }),
+    }));
+
+    res.json({
+      rotation_start_date: config[0] ? config[0].value : null,
+      weeks,
+      meals,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/meals/:id — single meal with full details
 app.get('/api/meals/:id', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM meals WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/rotation-slot — update a recurring slot in the 3-week plan
+app.put('/api/rotation-slot', async (req, res) => {
+  const weekNumber = Number(req.body.week_number);
+  const dayOfWeek  = Number(req.body.day_of_week);
+  const mealId     = req.body.meal_id === null || req.body.meal_id === '' ? null : Number(req.body.meal_id);
+
+  if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 3) {
+    return res.status(400).json({ error: 'week_number must be 1, 2, or 3' });
+  }
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) {
+    return res.status(400).json({ error: 'day_of_week must be 1 through 7' });
+  }
+  if (mealId !== null && (!Number.isInteger(mealId) || mealId < 1)) {
+    return res.status(400).json({ error: 'meal_id must be a valid meal id or null' });
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO meal_rotation (week_number, day_of_week, meal_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (week_number, day_of_week)
+       DO UPDATE SET meal_id = EXCLUDED.meal_id`,
+      [weekNumber, dayOfWeek, mealId]
+    );
+
+    const { rows } = await pool.query(
+      `SELECT r.week_number, r.day_of_week, r.meal_id,
+              m.name, m.cook, m.kid_rating, m.is_protected, m.is_new
+       FROM meal_rotation r
+       LEFT JOIN meals m ON m.id = r.meal_id
+       WHERE r.week_number = $1 AND r.day_of_week = $2`,
+      [weekNumber, dayOfWeek]
+    );
+
+    res.json({
+      success: true,
+      slot: rows[0] || { week_number: weekNumber, day_of_week: dayOfWeek, meal_id: mealId },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -379,7 +565,7 @@ app.post('/api/vote', async (req, res) => {
   if (!meal_id || !member_id || !reaction) {
     return res.status(400).json({ error: 'meal_id, member_id, and reaction required' });
   }
-  const weekStart = mondayOf(new Date()).toISOString().split('T')[0];
+  const weekStart = localDateString(mondayOf(new Date()));
   try {
     await pool.query(
       `INSERT INTO meal_votes (meal_id, member_id, reaction, week_context)
@@ -404,7 +590,7 @@ app.post('/api/vote', async (req, res) => {
 
 // GET /api/votes/:meal_id — votes for a meal this week
 app.get('/api/votes/:meal_id', async (req, res) => {
-  const weekStart = mondayOf(new Date()).toISOString().split('T')[0];
+  const weekStart = localDateString(mondayOf(new Date()));
   try {
     const { rows } = await pool.query(
       `SELECT v.reaction, f.name, f.avatar_emoji
@@ -423,7 +609,7 @@ app.get('/api/votes/:meal_id', async (req, res) => {
 app.post('/api/log', async (req, res) => {
   const { meal_id, planned_meal_id, notes, cooked_date } = req.body;
   if (!meal_id) return res.status(400).json({ error: 'meal_id required' });
-  const date = cooked_date || new Date().toISOString().split('T')[0];
+  const date = cooked_date || localDateString(new Date());
   try {
     await pool.query(
       `INSERT INTO cook_log (cooked_date, meal_id, planned_meal_id, was_planned, notes)
@@ -442,7 +628,7 @@ app.post('/api/energy', async (req, res) => {
   if (!energy_level || energy_level < 1 || energy_level > 5) {
     return res.status(400).json({ error: 'energy_level 1–5 required' });
   }
-  const weekStart = mondayOf(new Date()).toISOString().split('T')[0];
+  const weekStart = localDateString(mondayOf(new Date()));
   try {
     await pool.query(
       `INSERT INTO val_energy (week_start, energy_level, note)
@@ -458,7 +644,7 @@ app.post('/api/energy', async (req, res) => {
 
 // GET /api/energy — this week's energy level
 app.get('/api/energy', async (req, res) => {
-  const weekStart = mondayOf(new Date()).toISOString().split('T')[0];
+  const weekStart = localDateString(mondayOf(new Date()));
   try {
     const { rows } = await pool.query(
       'SELECT * FROM val_energy WHERE week_start = $1',
@@ -525,6 +711,10 @@ app.post('/api/order-in/:date/vote', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => {

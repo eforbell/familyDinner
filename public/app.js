@@ -2,7 +2,6 @@
 let currentMember = JSON.parse(localStorage.getItem('fd_member') || 'null');
 let weekData      = null;
 let allMeals      = [];
-let restaurants   = [];
 let membersCache  = [];
 let swapTarget    = null;
 let todayDate     = null;
@@ -11,7 +10,7 @@ let tonightMealId = null;
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   updateWhoBtn();
-  await Promise.all([loadWeek(), loadAllMeals(), loadRestaurants()]);
+  await loadWeek();
 
   if (!currentMember) {
     // First visit — show member picker after a brief delay so the page renders
@@ -33,20 +32,14 @@ async function loadWeek() {
 }
 
 async function loadAllMeals() {
+  if (allMeals.length) return allMeals;
   try {
     const res = await fetch('/api/meals');
     allMeals  = await res.json();
+    return allMeals;
   } catch (e) {
     console.error('Failed to load meals', e);
-  }
-}
-
-async function loadRestaurants() {
-  try {
-    const res  = await fetch('/api/restaurants');
-    restaurants = await res.json();
-  } catch (e) {
-    console.error('Failed to load restaurants', e);
+    return [];
   }
 }
 
@@ -322,7 +315,7 @@ function toggleTonightDetails() {
 }
 
 // ── Swap Modal ────────────────────────────────────────────────
-function openSwap(date, context) {
+async function openSwap(date, context) {
   swapTarget = { date, context };
   const overlay = document.getElementById('swap-overlay');
   overlay.classList.remove('hidden');
@@ -331,6 +324,7 @@ function openSwap(date, context) {
   document.getElementById('swap-day-label').textContent =
     d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
+  await loadAllMeals();
   const sel = document.getElementById('swap-select');
   sel.innerHTML = allMeals
     .filter(m => !m.is_protected)
@@ -395,8 +389,10 @@ async function loadAndShowMembers() {
   const grid = list.querySelector('.member-grid');
 
   try {
-    const res  = await fetch('/api/members');
-    membersCache = await res.json();
+    if (!membersCache.length) {
+      const res  = await fetch('/api/members');
+      membersCache = await res.json();
+    }
     grid.innerHTML = membersCache.map(m =>
       `<button class="member-btn" onclick="selectMember(${m.id})">
         <span class="member-avatar">${m.avatar_emoji}</span>
@@ -505,9 +501,9 @@ async function voteRestaurant(date, restaurantId) {
 }
 
 function buildRestaurantVotesHtml(orderIn, date) {
-  // Use votes embedded in the orderIn object — avoids race with /api/restaurants fetch
+  // Use votes embedded in the orderIn object so the initial page load stays lean.
   const voteData = (orderIn && orderIn.votes) ? orderIn.votes : [];
-  if (!voteData.length) return '<p class="muted" style="font-size:.85rem">No restaurants loaded.</p>';
+  if (!voteData.length) return '<p class="muted" style="font-size:.85rem">No order-in options available.</p>';
 
   const myVote = currentMember
     ? voteData.find(r => r.voters && r.voters.includes(currentMember.name))

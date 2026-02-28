@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Dinner Admin</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app" class="admin-app">
+    <header class="admin-header">
+      <div>
+        <div class="week-badge">Rotation Admin</div>
+        <h1>3-Week Dinner Plan</h1>
+      </div>
+      <a href="/" class="btn-ghost admin-home-link">Back to dinner</a>
+    </header>
+
+    <section class="admin-intro">
+      <p class="admin-copy">This page edits the repeating 3-week rotation directly. Changes here affect future weeks that use the same slot.</p>
+      <p id="rotation-meta" class="muted">Loading rotation…</p>
+      <p id="rotation-status" class="admin-status hidden"></p>
+    </section>
+
+    <section id="rotation-grid" class="rotation-grid"></section>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
