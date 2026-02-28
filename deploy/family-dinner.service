@@ -5,10 +5,10 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=forbell
-WorkingDirectory=/home/forbell/familyDinner
-EnvironmentFile=/home/forbell/familyDinner/.env
+WorkingDirectory=/data/apps/familyDinner
+EnvironmentFile=/data/apps/familyDinner/.env
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node /home/forbell/familyDinner/server.js
+ExecStart=/usr/bin/node /data/apps/familyDinner/server.js
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
