@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-magic-settings-btn').addEventListener('click', saveMagicSettings);
   document.getElementById('magic-grocery-generate-btn').addEventListener('click', generateMagicGrocery);
   document.getElementById('save-grocery-settings-btn').addEventListener('click', saveMagicGrocerySettings);
+  document.getElementById('print-grocery-btn').addEventListener('click', printMagicGrocery);
   loadMeals();
   loadMagicSettings();
   loadMagicGrocerySettings();
@@ -346,6 +347,42 @@ function renderMagicGroceryResult(data) {
   list.textContent = lines.join('\n').trim();
   document.getElementById('magic-grocery-summary').textContent =
     `Built from ${data.context_summary.meal_count} planned cook-at-home meals starting ${data.context_summary.week_start}.`;
+}
+
+function printMagicGrocery() {
+  if (!lastGroceryList) {
+    setStatus('Generate a grocery list first, then print it.', true);
+    return;
+  }
+
+  const title = lastGroceryList.title || 'Weekly Grocery List';
+  const body = document.getElementById('magic-grocery-list').textContent || '';
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
+  if (!printWindow) {
+    setStatus('Pop-up blocked. Allow pop-ups to open print view.', true);
+    return;
+  }
+
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${esc(title)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 24px; color: #111; }
+    h1 { margin: 0 0 14px; font-size: 1.5rem; }
+    pre { white-space: pre-wrap; font-family: inherit; font-size: 1rem; line-height: 1.45; margin: 0; }
+    @page { size: auto; margin: 12mm; }
+  </style>
+</head>
+<body>
+  <h1>${esc(title)}</h1>
+  <pre>${esc(body)}</pre>
+  <script>window.onload = () => { window.print(); };</script>
+</body>
+</html>`);
+  printWindow.document.close();
 }
 
 function setStatus(message, isError) {
