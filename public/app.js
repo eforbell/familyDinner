@@ -555,6 +555,7 @@ function ratingEmoji(rating) {
   if (rating.includes('🟢')) return '🟢';
   if (rating.includes('🟡')) return '🟡';
   if (rating.includes('🔵')) return '🔵';
+  if (rating.includes('🔴')) return '🔴';
   return rating;
 }
 
@@ -563,6 +564,7 @@ function kidRatingClass(rating) {
   if (rating.includes('🟢')) return 'green';
   if (rating.includes('🟡')) return 'yellow';
   if (rating.includes('🔵')) return 'blue';
+  if (rating.includes('🔴')) return 'red';
   return '';
 }
 
@@ -582,6 +584,7 @@ function kidRatingDesc(rating) {
   if (rating.includes('🟢')) return 'Whole family';
   if (rating.includes('🟡')) return 'Adults + daughter';
   if (rating.includes('🔵')) return 'Adults + son';
+  if (rating.includes('🔴')) return 'Adults only';
   return '';
 }
 

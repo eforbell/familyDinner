@@ -160,6 +160,7 @@ function kidRatingClass(rating) {
   if (rating.includes('🟢')) return 'green';
   if (rating.includes('🟡')) return 'yellow';
   if (rating.includes('🔵')) return 'blue';
+  if (rating.includes('🔴')) return 'red';
   return '';
 }
 

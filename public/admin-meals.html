@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Meal Admin</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app" class="admin-app">
+    <header class="admin-header">
+      <div>
+        <div class="week-badge">Meal Admin</div>
+        <h1>Meal Library</h1>
+      </div>
+      <div class="admin-header-actions">
+        <a href="/admin" class="btn-ghost admin-home-link">Rotation admin</a>
+        <a href="/" class="btn-ghost admin-home-link">Back to dinner</a>
+      </div>
+    </header>
+
+    <section class="admin-intro">
+      <p class="admin-copy">Create and edit the house meal catalog here. Rotation slots and one-off swaps pull from this list.</p>
+      <p id="meal-admin-status" class="admin-status hidden"></p>
+    </section>
+
+    <section class="meal-admin-layout">
+      <aside class="meal-library-panel">
+        <div class="meal-library-head">
+          <h2>Meals</h2>
+          <button id="new-meal-btn" class="btn-primary" type="button">New meal</button>
+        </div>
+        <input id="meal-search" class="meal-search" type="search" placeholder="Search meals">
+        <div id="meal-list" class="meal-list"></div>
+      </aside>
+
+      <section class="meal-editor-panel">
+        <div class="meal-editor-head">
+          <div>
+            <h2 id="meal-form-title">New meal</h2>
+            <p id="meal-form-subtitle" class="muted">Fill this in, then save it into the catalog.</p>
+          </div>
+          <button id="delete-meal-btn" class="btn-danger hidden" type="button">Delete meal</button>
+        </div>
+
+        <form id="meal-form" class="meal-form">
+          <label class="form-field">
+            <span>Name</span>
+            <input name="name" type="text" required>
+          </label>
+
+          <div class="meal-form-grid">
+            <label class="form-field">
+              <span>Cook</span>
+              <input name="cook" type="text" list="cook-options" placeholder="Pick or type a cook label">
+            </label>
+            <label class="form-field">
+              <span>Kid rating</span>
+              <select name="kid_rating">
+                <option value="">None</option>
+                <option value="🟢">🟢 Whole family</option>
+                <option value="🟡">🟡 Adults + daughter</option>
+                <option value="🔵">🔵 Adults + son</option>
+                <option value="🔴">🔴 Adults only</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span>Active time (min)</span>
+              <input name="active_time_min" type="number" min="0" step="1">
+            </label>
+            <label class="form-field">
+              <span>Total time (min)</span>
+              <input name="total_time_min" type="number" min="0" step="1">
+            </label>
+          </div>
+
+          <label class="form-field">
+            <span>Notes</span>
+            <textarea name="notes" rows="3" placeholder="Short context note"></textarea>
+          </label>
+
+          <label class="form-field">
+            <span>Recipe tips</span>
+            <textarea name="recipe_tips" rows="6" placeholder="Prep tips or recipe outline"></textarea>
+          </label>
+
+          <div class="meal-form-grid">
+            <label class="form-field">
+              <span>Equipment</span>
+              <input name="equipment" type="text" placeholder="sheet-pan, oven, instant-pot">
+            </label>
+            <label class="form-field">
+              <span>Tags</span>
+              <input name="tags" type="text" placeholder="chicken, easy, taco-bar">
+            </label>
+          </div>
+
+          <div class="meal-toggle-row">
+            <label class="toggle-field">
+              <input name="is_new" type="checkbox">
+              <span>Mark as new</span>
+            </label>
+            <label class="toggle-field">
+              <input name="is_protected" type="checkbox">
+              <span>Protected / no-cook slot</span>
+            </label>
+          </div>
+
+          <div class="meal-form-actions">
+            <button class="btn-primary" type="submit">Save meal</button>
+            <button id="reset-meal-btn" class="btn-ghost" type="button">Reset form</button>
+          </div>
+        </form>
+
+        <datalist id="cook-options">
+          <option value="👨‍🍳"></option>
+          <option value="👩‍🍳"></option>
+          <option value="👨‍🍳 / 👩‍🍳"></option>
+          <option value="👩‍🍳 or 👨‍🍳"></option>
+          <option value="—"></option>
+        </datalist>
+      </section>
+    </section>
+  </div>
+
+  <script src="/admin-meals.js"></script>
+</body>
+</html>

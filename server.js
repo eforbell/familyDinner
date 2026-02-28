@@ -42,6 +42,51 @@ function localDateString(date) {
   return `${year}-${month}-${day}`;
 }
 
+function parseTextList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value !== 'string') return [];
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeMealPayload(body) {
+  const activeTime = body.active_time_min === '' || body.active_time_min == null
+    ? null
+    : Number(body.active_time_min);
+  const totalTime = body.total_time_min === '' || body.total_time_min == null
+    ? null
+    : Number(body.total_time_min);
+
+  return {
+    name: String(body.name || '').trim(),
+    notes: body.notes ? String(body.notes).trim() : null,
+    recipe_tips: body.recipe_tips ? String(body.recipe_tips).trim() : null,
+    active_time_min: Number.isFinite(activeTime) ? activeTime : null,
+    total_time_min: Number.isFinite(totalTime) ? totalTime : null,
+    equipment: parseTextList(body.equipment),
+    cook: body.cook ? String(body.cook).trim() : null,
+    kid_rating: body.kid_rating ? String(body.kid_rating).trim() : null,
+    is_new: Boolean(body.is_new),
+    is_protected: Boolean(body.is_protected),
+    tags: parseTextList(body.tags),
+  };
+}
+
+function validateMealPayload(meal) {
+  if (!meal.name) return 'name is required';
+  if (meal.active_time_min !== null && (!Number.isInteger(meal.active_time_min) || meal.active_time_min < 0)) {
+    return 'active_time_min must be a non-negative integer';
+  }
+  if (meal.total_time_min !== null && (!Number.isInteger(meal.total_time_min) || meal.total_time_min < 0)) {
+    return 'total_time_min must be a non-negative integer';
+  }
+  return null;
+}
+
 /** ISO day-of-week: Mon=1 … Sun=7 */
 function isoDay(date) {
   const d = date.getDay();
@@ -415,6 +460,38 @@ app.get('/api/meals', async (req, res) => {
   }
 });
 
+app.post('/api/meals', async (req, res) => {
+  const meal = normalizeMealPayload(req.body);
+  const validationError = validateMealPayload(meal);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO meals (
+        name, notes, recipe_tips, active_time_min, total_time_min,
+        equipment, cook, kid_rating, is_new, is_protected, tags
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *`,
+      [
+        meal.name,
+        meal.notes,
+        meal.recipe_tips,
+        meal.active_time_min,
+        meal.total_time_min,
+        meal.equipment,
+        meal.cook,
+        meal.kid_rating,
+        meal.is_new,
+        meal.is_protected,
+        meal.tags,
+      ]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/rotation — recurring 3-week plan plus meal catalog
 app.get('/api/rotation', async (req, res) => {
   try {
@@ -473,6 +550,81 @@ app.get('/api/meals/:id', async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM meals WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/meals/:id', async (req, res) => {
+  const mealId = Number(req.params.id);
+  if (!Number.isInteger(mealId) || mealId < 1) {
+    return res.status(400).json({ error: 'invalid meal id' });
+  }
+
+  const meal = normalizeMealPayload(req.body);
+  const validationError = validateMealPayload(meal);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE meals
+       SET name = $2,
+           notes = $3,
+           recipe_tips = $4,
+           active_time_min = $5,
+           total_time_min = $6,
+           equipment = $7,
+           cook = $8,
+           kid_rating = $9,
+           is_new = $10,
+           is_protected = $11,
+           tags = $12
+       WHERE id = $1
+       RETURNING *`,
+      [
+        mealId,
+        meal.name,
+        meal.notes,
+        meal.recipe_tips,
+        meal.active_time_min,
+        meal.total_time_min,
+        meal.equipment,
+        meal.cook,
+        meal.kid_rating,
+        meal.is_new,
+        meal.is_protected,
+        meal.tags,
+      ]
+    );
+
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/meals/:id', async (req, res) => {
+  const mealId = Number(req.params.id);
+  if (!Number.isInteger(mealId) || mealId < 1) {
+    return res.status(400).json({ error: 'invalid meal id' });
+  }
+
+  try {
+    const usageChecks = await Promise.all([
+      pool.query('SELECT 1 FROM meal_rotation WHERE meal_id = $1 LIMIT 1', [mealId]),
+      pool.query('SELECT 1 FROM daily_overrides WHERE override_meal_id = $1 LIMIT 1', [mealId]),
+      pool.query('SELECT 1 FROM cook_log WHERE meal_id = $1 OR planned_meal_id = $1 LIMIT 1', [mealId]),
+      pool.query('SELECT 1 FROM meal_votes WHERE meal_id = $1 LIMIT 1', [mealId]),
+    ]);
+
+    if (usageChecks.some(result => result.rows.length)) {
+      return res.status(409).json({ error: 'Meal is already in use and cannot be deleted.' });
+    }
+
+    const { rowCount } = await pool.query('DELETE FROM meals WHERE id = $1', [mealId]);
+    if (!rowCount) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -715,6 +867,10 @@ app.post('/api/order-in/:date/vote', async (req, res) => {
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/admin/meals', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-meals.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => {
