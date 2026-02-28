@@ -2,6 +2,7 @@ let meals = [];
 let filteredMeals = [];
 let selectedMealId = null;
 let lastMagicDraft = null;
+let lastGroceryList = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('meal-form').addEventListener('submit', saveMeal);
@@ -11,8 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('meal-search').addEventListener('input', applySearch);
   document.getElementById('magic-generate-btn').addEventListener('click', generateMagicMeal);
   document.getElementById('save-magic-settings-btn').addEventListener('click', saveMagicSettings);
+  document.getElementById('magic-grocery-generate-btn').addEventListener('click', generateMagicGrocery);
+  document.getElementById('save-grocery-settings-btn').addEventListener('click', saveMagicGrocerySettings);
   loadMeals();
   loadMagicSettings();
+  loadMagicGrocerySettings();
 });
 
 async function loadMeals() {
@@ -251,6 +255,97 @@ function hideMagicResult() {
   document.getElementById('magic-meal-result').classList.add('hidden');
   document.getElementById('magic-meal-why').textContent = '';
   document.getElementById('magic-meal-summary').textContent = '';
+}
+
+async function loadMagicGrocerySettings() {
+  try {
+    const res = await fetch('../api/magic-grocery/settings');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load Magic Grocery settings');
+    document.getElementById('magic-grocery-prompt').value = data.magic_grocery_prompt || '';
+  } catch (err) {
+    setStatus(err.message || 'Could not load Magic Grocery settings.', true);
+  }
+}
+
+async function saveMagicGrocerySettings() {
+  try {
+    await persistMagicGrocerySettings(false);
+    setStatus('Magic Grocery settings saved.', false);
+  } catch (err) {
+    setStatus(err.message || 'Could not save Magic Grocery settings.', true);
+  }
+}
+
+async function persistMagicGrocerySettings(showStatus) {
+  const prompt = document.getElementById('magic-grocery-prompt').value;
+  const res = await fetch('../api/magic-grocery/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ magic_grocery_prompt: prompt }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not save Magic Grocery settings');
+  }
+  if (showStatus) setStatus('Magic Grocery settings saved.', false);
+  return data;
+}
+
+async function generateMagicGrocery() {
+  const button = document.getElementById('magic-grocery-generate-btn');
+  button.disabled = true;
+  button.textContent = 'Building list...';
+
+  try {
+    await persistMagicGrocerySettings(false);
+
+    const res = await fetch('../api/magic-grocery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_notes: document.getElementById('magic-grocery-notes').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Magic Grocery failed');
+
+    lastGroceryList = data.list;
+    renderMagicGroceryResult(data);
+    setStatus('Magic Grocery built a weekly grocery list.', false);
+  } catch (err) {
+    setStatus(err.message || 'Magic Grocery failed.', true);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Magic Grocery';
+  }
+}
+
+function renderMagicGroceryResult(data) {
+  const result = document.getElementById('magic-grocery-result');
+  const list = document.getElementById('magic-grocery-list');
+  result.classList.remove('hidden');
+
+  const lines = [data.list.title || 'Weekly Grocery List', ''];
+  for (const section of data.list.sections || []) {
+    lines.push(`${section.name}:`);
+    for (const item of section.items || []) {
+      const usedFor = (item.used_for || []).length ? ` (${item.used_for.join(', ')})` : '';
+      lines.push(`- ${item.name}${item.quantity ? ` — ${item.quantity}` : ''}${usedFor}`);
+    }
+    lines.push('');
+  }
+
+  if ((data.list.prep_notes || []).length) {
+    lines.push('Prep notes:');
+    for (const note of data.list.prep_notes) {
+      lines.push(`- ${note}`);
+    }
+  }
+
+  list.textContent = lines.join('\n').trim();
+  document.getElementById('magic-grocery-summary').textContent =
+    `Built from ${data.context_summary.meal_count} planned cook-at-home meals starting ${data.context_summary.week_start}.`;
 }
 
 function setStatus(message, isError) {

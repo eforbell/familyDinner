@@ -16,6 +16,13 @@ const DEFAULT_MAGIC_MEAL_PROMPT = [
   'Avoid creating a near-duplicate of an existing meal.',
   'Return one meal draft that can be edited and saved into the meal library.',
 ].join(' ');
+const DEFAULT_MAGIC_GROCERY_PROMPT = [
+  'Generate a practical grocery list for the upcoming family dinner week.',
+  'Use the week plan, meal details, and recipe tips to infer likely ingredients.',
+  'Consolidate duplicates and quantities across meals when possible.',
+  'Keep outputs realistic for a normal grocery run, grouped by store section.',
+  'Prefer concise, clear list items and include short prep notes only when useful.',
+].join(' ');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -130,6 +137,12 @@ async function setAppConfigValue(key, value) {
 async function getMagicMealSettings() {
   return {
     magic_meal_prompt: await getAppConfigValue('magic_meal_prompt', DEFAULT_MAGIC_MEAL_PROMPT),
+  };
+}
+
+async function getMagicGrocerySettings() {
+  return {
+    magic_grocery_prompt: await getAppConfigValue('magic_grocery_prompt', DEFAULT_MAGIC_GROCERY_PROMPT),
   };
 }
 
@@ -330,6 +343,170 @@ async function generateMagicMeal(requestNotes = '') {
     context_summary: {
       meal_count: context.meals.length,
       prompt_used: context.settings.magic_meal_prompt,
+    },
+  };
+}
+
+async function getMagicGroceryContext(date) {
+  const [settings, week] = await Promise.all([
+    getMagicGrocerySettings(),
+    weekDataForDate(date),
+  ]);
+
+  const plannedMeals = week.days
+    .filter(day => day.meal && !day.order_in && !day.meal.is_protected)
+    .map(day => ({
+      date: day.date,
+      day_name: day.day_name,
+      meal_name: day.meal.name,
+      notes: day.meal.notes,
+      recipe_tips: day.meal.recipe_tips,
+      active_time_min: day.meal.active_time_min,
+      total_time_min: day.meal.total_time_min,
+      tags: day.meal.tags || [],
+      cook: day.meal.cook,
+    }));
+
+  return {
+    settings,
+    week_start: week.week_start,
+    rotation_week: week.rotation_week,
+    planned_meals: plannedMeals,
+  };
+}
+
+async function generateMagicGroceryList(targetDate, requestNotes = '') {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured on the server.');
+  }
+
+  const context = await getMagicGroceryContext(targetDate);
+  if (!context.planned_meals.length) {
+    return {
+      list: {
+        title: 'Weekly Grocery List',
+        sections: [],
+        prep_notes: ['No cook-at-home meals found for this week.'],
+      },
+      context_summary: {
+        week_start: context.week_start,
+        meal_count: 0,
+        prompt_used: context.settings.magic_grocery_prompt,
+      },
+    };
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      reasoning_effort: 'minimal',
+      max_completion_tokens: 2200,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'magic_grocery_list',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['title', 'sections', 'prep_notes'],
+            properties: {
+              title: { type: 'string' },
+              sections: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['name', 'items'],
+                  properties: {
+                    name: { type: 'string' },
+                    items: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['name', 'quantity', 'used_for'],
+                        properties: {
+                          name: { type: 'string' },
+                          quantity: { type: 'string' },
+                          used_for: {
+                            type: 'array',
+                            items: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              prep_notes: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You generate practical weekly grocery lists for a family dinner app.',
+            'Infer likely ingredients from meal names, notes, and recipe tips.',
+            'Consolidate overlapping ingredients and prefer realistic quantity estimates.',
+            'Group by typical grocery sections.',
+            'Return valid JSON that matches the schema exactly.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            task: 'Generate one consolidated grocery list for the planned week meals.',
+            stored_prompt: context.settings.magic_grocery_prompt,
+            request_notes: requestNotes,
+            week_start: context.week_start,
+            rotation_week: context.rotation_week,
+            planned_meals: context.planned_meals,
+          }),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const message = data.choices && data.choices[0] ? data.choices[0].message : null;
+  const finishReason = data.choices && data.choices[0] ? data.choices[0].finish_reason : '';
+  const refusal = message && typeof message.refusal === 'string' ? message.refusal : '';
+  const content = extractAssistantText(message);
+
+  if (!content) {
+    if (finishReason === 'length') {
+      throw new Error('OpenAI ran out of completion budget before returning the grocery list. Try a shorter request note or different model.');
+    }
+    throw new Error(refusal || `OpenAI did not return a grocery list. Raw response: ${JSON.stringify(data)}`);
+  }
+
+  const list = JSON.parse(content);
+  if (!list || !Array.isArray(list.sections)) {
+    throw new Error('Magic Grocery returned invalid JSON. Retry generation.');
+  }
+
+  return {
+    list,
+    context_summary: {
+      week_start: context.week_start,
+      meal_count: context.planned_meals.length,
+      prompt_used: context.settings.magic_grocery_prompt,
     },
   };
 }
@@ -817,6 +994,41 @@ app.post('/api/magic-meal', async (req, res) => {
       ? String(req.body.request_notes).trim()
       : '';
     res.json(await generateMagicMeal(requestNotes));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/magic-grocery/settings', async (req, res) => {
+  try {
+    res.json(await getMagicGrocerySettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/magic-grocery/settings', async (req, res) => {
+  const prompt = String(req.body.magic_grocery_prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'magic_grocery_prompt is required' });
+
+  try {
+    await setAppConfigValue('magic_grocery_prompt', prompt);
+    res.json({ success: true, magic_grocery_prompt: prompt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/magic-grocery', async (req, res) => {
+  try {
+    const requestNotes = req.body && req.body.request_notes
+      ? String(req.body.request_notes).trim()
+      : '';
+    const targetDate = req.body && req.body.week_start_date
+      ? parseDateOnly(String(req.body.week_start_date))
+      : new Date();
+
+    res.json(await generateMagicGroceryList(targetDate, requestNotes));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

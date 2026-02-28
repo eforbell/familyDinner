@@ -797,7 +797,8 @@ button { cursor: pointer; font-family: inherit; }
   gap: 0.75rem;
 }
 
-.magic-meal-panel {
+.magic-meal-panel,
+.magic-grocery-panel {
   border-bottom: 1px solid var(--border);
   display: grid;
   gap: 0.9rem;
@@ -816,6 +817,21 @@ button { cursor: pointer; font-family: inherit; }
   color: var(--text);
   line-height: 1.5;
   margin-top: 0.35rem;
+}
+
+.magic-grocery-list {
+  background: rgba(15, 15, 15, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin-top: 0.5rem;
+  max-height: 420px;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
 }
 
 @media (min-width: 980px) {
