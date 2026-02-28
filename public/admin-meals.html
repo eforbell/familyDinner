@@ -37,6 +37,36 @@
       </aside>
 
       <section class="meal-editor-panel">
+        <section class="magic-meal-panel">
+          <div class="meal-editor-head">
+            <div>
+              <h2>Magic Meal</h2>
+              <p class="muted">Generate one draft meal using your meal history, votes, and cooking patterns.</p>
+            </div>
+            <button id="magic-generate-btn" class="btn-primary" type="button">Magic Meal</button>
+          </div>
+
+          <label class="form-field">
+            <span>House guidance for Magic Meal</span>
+            <textarea id="magic-meal-prompt" rows="4" placeholder="Tell the AI what this household tends to like, avoid, or repeat."></textarea>
+          </label>
+
+          <div class="meal-form-actions">
+            <button id="save-magic-settings-btn" class="btn-ghost" type="button">Save Magic settings</button>
+          </div>
+
+          <label class="form-field">
+            <span>One-time generation notes</span>
+            <textarea id="magic-meal-notes" rows="3" placeholder="Optional. Example: something cozy, under 35 minutes, and not pasta."></textarea>
+          </label>
+
+          <div id="magic-meal-result" class="magic-result hidden">
+            <div class="vote-label">Why this fits</div>
+            <p id="magic-meal-why" class="magic-why"></p>
+            <p id="magic-meal-summary" class="muted"></p>
+          </div>
+        </section>
+
         <div class="meal-editor-head">
           <div>
             <h2 id="meal-form-title">New meal</h2>

@@ -1,6 +1,7 @@
 let meals = [];
 let filteredMeals = [];
 let selectedMealId = null;
+let lastMagicDraft = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('meal-form').addEventListener('submit', saveMeal);
@@ -8,7 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('reset-meal-btn').addEventListener('click', resetForm);
   document.getElementById('delete-meal-btn').addEventListener('click', deleteMeal);
   document.getElementById('meal-search').addEventListener('input', applySearch);
+  document.getElementById('magic-generate-btn').addEventListener('click', generateMagicMeal);
+  document.getElementById('save-magic-settings-btn').addEventListener('click', saveMagicSettings);
   loadMeals();
+  loadMagicSettings();
 });
 
 async function loadMeals() {
@@ -69,8 +73,10 @@ async function selectMeal(mealId) {
     const meal = await res.json();
     if (!res.ok) throw new Error(meal.error || 'Could not load meal');
 
+    lastMagicDraft = null;
     selectedMealId = meal.id;
     fillForm(meal);
+    hideMagicResult();
     renderMealList();
     updateEditorState();
   } catch (err) {
@@ -95,16 +101,18 @@ function fillForm(meal) {
 
 function resetForm() {
   selectedMealId = null;
+  lastMagicDraft = null;
   document.getElementById('meal-form').reset();
+  hideMagicResult();
   updateEditorState();
   renderMealList();
 }
 
 function updateEditorState() {
-  document.getElementById('meal-form-title').textContent = selectedMealId ? 'Edit meal' : 'New meal';
+  document.getElementById('meal-form-title').textContent = selectedMealId ? 'Edit meal' : (lastMagicDraft ? 'Magic Meal draft' : 'New meal');
   document.getElementById('meal-form-subtitle').textContent = selectedMealId
     ? `Editing meal #${selectedMealId}. Save to update the existing record.`
-    : 'Fill this in, then save it into the catalog.';
+    : (lastMagicDraft ? 'Magic Meal drafted this as a new meal. Edit anything you want, then save it like a normal meal.' : 'Fill this in, then save it into the catalog.');
   document.getElementById('delete-meal-btn').classList.toggle('hidden', !selectedMealId);
 }
 
@@ -161,6 +169,88 @@ async function deleteMeal() {
   } catch (err) {
     setStatus(err.message || 'Delete failed.', true);
   }
+}
+
+async function loadMagicSettings() {
+  try {
+    const res = await fetch('/api/magic-meal/settings');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load Magic Meal settings');
+    document.getElementById('magic-meal-prompt').value = data.magic_meal_prompt || '';
+  } catch (err) {
+    setStatus(err.message || 'Could not load Magic Meal settings.', true);
+  }
+}
+
+async function saveMagicSettings() {
+  try {
+    await persistMagicSettings(false);
+    setStatus('Magic Meal settings saved.', false);
+  } catch (err) {
+    setStatus(err.message || 'Could not save Magic Meal settings.', true);
+  }
+}
+
+async function persistMagicSettings(showStatus) {
+  const prompt = document.getElementById('magic-meal-prompt').value;
+  const res = await fetch('/api/magic-meal/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ magic_meal_prompt: prompt }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not save Magic Meal settings');
+  }
+  if (showStatus) setStatus('Magic Meal settings saved.', false);
+  return data;
+}
+
+async function generateMagicMeal() {
+  const button = document.getElementById('magic-generate-btn');
+  button.disabled = true;
+  button.textContent = 'Thinking...';
+
+  try {
+    await persistMagicSettings(false);
+
+    const res = await fetch('/api/magic-meal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request_notes: document.getElementById('magic-meal-notes').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Magic Meal failed');
+
+    lastMagicDraft = data.draft;
+    selectedMealId = null;
+    fillForm(data.draft);
+    renderMagicResult(data);
+    updateEditorState();
+    renderMealList();
+    setStatus('Magic Meal drafted a new meal into the form.', false);
+  } catch (err) {
+    setStatus(err.message || 'Magic Meal failed.', true);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Magic Meal';
+  }
+}
+
+function renderMagicResult(data) {
+  const result = document.getElementById('magic-meal-result');
+  result.classList.remove('hidden');
+  document.getElementById('magic-meal-why').textContent = data.draft.why_it_fits || '';
+  document.getElementById('magic-meal-summary').textContent =
+    `Drafted from ${data.context_summary.meal_count} existing meals and your saved Magic Meal guidance.`;
+}
+
+function hideMagicResult() {
+  document.getElementById('magic-meal-result').classList.add('hidden');
+  document.getElementById('magic-meal-why').textContent = '';
+  document.getElementById('magic-meal-summary').textContent = '';
 }
 
 function setStatus(message, isError) {

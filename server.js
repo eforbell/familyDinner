@@ -7,6 +7,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const DEFAULT_MAGIC_MEAL_PROMPT = [
+  'Design one new dinner idea for this household.',
+  'Use the family meal history, ratings, and repetition patterns to find something that fits.',
+  'Prefer practical dinners that feel like a house standard, not restaurant fantasy food.',
+  'Avoid creating a near-duplicate of an existing meal.',
+  'Return one meal draft that can be edited and saved into the meal library.',
+].join(' ');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -85,6 +94,244 @@ function validateMealPayload(meal) {
     return 'total_time_min must be a non-negative integer';
   }
   return null;
+}
+
+function extractAssistantText(message) {
+  if (!message) return '';
+  if (typeof message.content === 'string') return message.content;
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map(part => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part.text === 'string') return part.text;
+        if (part && part.type === 'output_text' && typeof part.text === 'string') return part.text;
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+  return '';
+}
+
+async function getAppConfigValue(key, fallback = null) {
+  const { rows } = await pool.query('SELECT value FROM app_config WHERE key = $1', [key]);
+  return rows.length ? rows[0].value : fallback;
+}
+
+async function setAppConfigValue(key, value) {
+  await pool.query(
+    `INSERT INTO app_config (key, value)
+     VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [key, value]
+  );
+}
+
+async function getMagicMealSettings() {
+  return {
+    magic_meal_prompt: await getAppConfigValue('magic_meal_prompt', DEFAULT_MAGIC_MEAL_PROMPT),
+  };
+}
+
+async function getMagicMealContext() {
+  const [{ rows: meals }, { rows: stats }, settings] = await Promise.all([
+    pool.query(
+      `SELECT id, name, notes, active_time_min, total_time_min,
+              equipment, cook, kid_rating, is_new, is_protected, tags
+       FROM meals
+       ORDER BY name`
+    ),
+    pool.query(
+      `SELECT m.id,
+              COALESCE(c.times_cooked, 0)::int AS times_cooked,
+              c.last_cooked_date,
+              COALESCE(v.love_count, 0)::int AS love_count,
+              COALESCE(v.like_count, 0)::int AS like_count,
+              COALESCE(v.dislike_count, 0)::int AS dislike_count,
+              COALESCE(v.shrug_count, 0)::int AS shrug_count
+       FROM meals m
+       LEFT JOIN (
+         SELECT meal_id,
+                COUNT(*) AS times_cooked,
+                MAX(cooked_date) AS last_cooked_date
+         FROM cook_log
+         WHERE meal_id IS NOT NULL
+         GROUP BY meal_id
+       ) c ON c.meal_id = m.id
+       LEFT JOIN (
+         SELECT meal_id,
+                COUNT(*) FILTER (WHERE reaction = '❤️') AS love_count,
+                COUNT(*) FILTER (WHERE reaction = '👍') AS like_count,
+                COUNT(*) FILTER (WHERE reaction = '👎') AS dislike_count,
+                COUNT(*) FILTER (WHERE reaction = '🤷') AS shrug_count
+         FROM meal_votes
+         GROUP BY meal_id
+       ) v ON v.meal_id = m.id
+       ORDER BY m.name`
+    ),
+    getMagicMealSettings(),
+  ]);
+
+  const statsByMealId = new Map(stats.map(row => [row.id, row]));
+
+  return {
+    settings,
+    meals: meals.map(meal => {
+      const mealStats = statsByMealId.get(meal.id) || {};
+      return {
+        id: meal.id,
+        name: meal.name,
+        notes: meal.notes,
+        active_time_min: meal.active_time_min,
+        total_time_min: meal.total_time_min,
+        equipment: meal.equipment,
+        cook: meal.cook,
+        kid_rating: meal.kid_rating,
+        is_new: meal.is_new,
+        is_protected: meal.is_protected,
+        tags: meal.tags,
+        times_cooked: mealStats.times_cooked || 0,
+        last_cooked_date: mealStats.last_cooked_date || null,
+        votes: {
+          love: mealStats.love_count || 0,
+          like: mealStats.like_count || 0,
+          dislike: mealStats.dislike_count || 0,
+          shrug: mealStats.shrug_count || 0,
+        },
+      };
+    }),
+  };
+}
+
+async function generateMagicMeal(requestNotes = '') {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured on the server.');
+  }
+
+  const context = await getMagicMealContext();
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      reasoning_effort: 'minimal',
+      max_completion_tokens: 1600,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'magic_meal_draft',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name', 'notes', 'recipe_tips', 'active_time_min', 'total_time_min', 'equipment', 'cook', 'kid_rating', 'is_new', 'is_protected', 'tags', 'why_it_fits'],
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Plain meal title only, like "Lemon Herb Chicken Skillet". Do not return JSON, schema text, or labels.',
+              },
+              notes: {
+                type: 'string',
+                description: 'Short description of the meal and why it fits a weeknight slot.',
+              },
+              recipe_tips: {
+                type: 'string',
+                description: 'Compact prep and cooking guidance for the household cook.',
+              },
+              active_time_min: { type: ['integer', 'null'], minimum: 0 },
+              total_time_min: { type: ['integer', 'null'], minimum: 0 },
+              equipment: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Short equipment list, e.g. ["skillet", "knife", "cutting board"].',
+              },
+              cook: {
+                type: 'string',
+                description: 'One cook label such as "👨‍🍳", "👩‍🍳", "👨‍🍳 / 👩‍🍳", "👩‍🍳 or 👨‍🍳", or "—".',
+              },
+              kid_rating: {
+                type: 'string',
+                enum: ['', '🟢', '🟡', '🔵', '🔴'],
+                description: 'Pick one household rating emoji or empty string.',
+              },
+              is_new: { type: 'boolean' },
+              is_protected: { type: 'boolean' },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Short lowercase tags only.',
+              },
+              why_it_fits: {
+                type: 'string',
+                description: 'Short explanation of why this meal fits the household patterns and preferences.',
+              },
+            },
+          },
+        },
+      },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are helping a family dinner app propose one new recurring meal draft.',
+            'The response must be valid JSON matching the provided schema.',
+            'Recommend exactly one new meal idea that fits the household and is distinct from the existing meal list.',
+            'Keep the dish practical, realistic, and appealing for repeated use.',
+            'Be concise so you have room to return the full JSON object.',
+            'The name field must be a human-readable meal title only, never schema text or JSON fragments.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            task: 'Propose one new dinner meal draft for the household meal library.',
+            stored_prompt: context.settings.magic_meal_prompt,
+            request_notes: requestNotes,
+            meal_history: context.meals,
+          }),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const message = data.choices && data.choices[0] ? data.choices[0].message : null;
+  const finishReason = data.choices && data.choices[0] ? data.choices[0].finish_reason : '';
+  const refusal = message && typeof message.refusal === 'string' ? message.refusal : '';
+  const content = extractAssistantText(message);
+
+  if (!content) {
+    if (finishReason === 'length') {
+      throw new Error('OpenAI ran out of completion budget before returning the meal draft. Try again with a shorter request note or different model.');
+    }
+    throw new Error(refusal || `OpenAI did not return a meal draft. Raw response: ${JSON.stringify(data)}`);
+  }
+
+  const draft = JSON.parse(content);
+  if (
+    !draft ||
+    typeof draft.name !== 'string' ||
+    !draft.name.trim() ||
+    draft.name.trim().startsWith('{') ||
+    draft.name.includes('"type"')
+  ) {
+    throw new Error('Magic Meal returned an invalid meal name. Retry generation.');
+  }
+  return {
+    draft,
+    context_summary: {
+      meal_count: context.meals.length,
+      prompt_used: context.settings.magic_meal_prompt,
+    },
+  };
 }
 
 /** ISO day-of-week: Mon=1 … Sun=7 */
@@ -504,7 +751,7 @@ app.get('/api/rotation', async (req, res) => {
          ORDER BY r.week_number, r.day_of_week`
       ),
       pool.query(
-        `SELECT id, name, cook, kid_rating, is_protected, is_new
+        `SELECT id, name, cook, kid_rating, is_protected, is_new, tags
          FROM meals
          ORDER BY name`
       ),
@@ -540,6 +787,37 @@ app.get('/api/rotation', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/magic-meal/settings', async (req, res) => {
+  try {
+    res.json(await getMagicMealSettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/magic-meal/settings', async (req, res) => {
+  const prompt = String(req.body.magic_meal_prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'magic_meal_prompt is required' });
+
+  try {
+    await setAppConfigValue('magic_meal_prompt', prompt);
+    res.json({ success: true, magic_meal_prompt: prompt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/magic-meal', async (req, res) => {
+  try {
+    const requestNotes = req.body && req.body.request_notes
+      ? String(req.body.request_notes).trim()
+      : '';
+    res.json(await generateMagicMeal(requestNotes));
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
