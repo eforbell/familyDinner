@@ -49,16 +49,17 @@ CREATE TABLE IF NOT EXISTS family_members (
   avatar_emoji    TEXT DEFAULT '👤'
 );
 
--- Reactions per meal per person per week
--- week_context = Monday of that week
+-- Reactions per meal per person per planned date
+-- week_context = Monday of that week, meal_date = actual dinner date
 CREATE TABLE IF NOT EXISTS meal_votes (
   id          SERIAL PRIMARY KEY,
   meal_id     INTEGER REFERENCES meals(id),
   member_id   INTEGER REFERENCES family_members(id),
   reaction    TEXT NOT NULL,   -- ❤️ 👍 👎 🤷
   week_context DATE NOT NULL,  -- Monday of the week
+  meal_date   DATE NOT NULL,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(meal_id, member_id, week_context)
+  UNIQUE(meal_id, member_id, meal_date)
 );
 
 -- Cook log: planned vs. what actually happened

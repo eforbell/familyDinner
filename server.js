@@ -2,6 +2,13 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
+const {
+  localDateString,
+  mealVoteWeekContext,
+  mondayOf,
+  parseDateOnly,
+  resolveMealVoteDate,
+} = require('./lib/date-utils');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,35 +35,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Helpers ──────────────────────────────────────────────────
-
-/** Returns the Monday (00:00 local) of the week containing `date`. */
-function mondayOf(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=Sun
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d;
-}
-
-function parseDateOnly(value) {
-  if (value instanceof Date) {
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate(), 12);
-  }
-
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map(Number);
-    return new Date(year, month - 1, day, 12);
-  }
-
-  return new Date(value);
-}
-
-function localDateString(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function parseTextList(value) {
   if (Array.isArray(value)) {
@@ -831,7 +809,7 @@ app.get('/tonight', async (req, res) => {
       const grid = document.getElementById('meal-votes');
       if (!grid) return;
 
-      const res = await fetch(\`./api/votes/\${MEAL_ID}\`);
+      const res = await fetch(\`./api/votes/\${MEAL_ID}?date=\${encodeURIComponent(DATE)}\`);
       const votes = await res.json();
       const myVote = me ? votes.find(v => v.name === me.name) : null;
 
@@ -855,7 +833,7 @@ app.get('/tonight', async (req, res) => {
       await fetch('./api/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meal_id: MEAL_ID, member_id: me.id, reaction }),
+        body: JSON.stringify({ meal_id: MEAL_ID, member_id: me.id, reaction, meal_date: DATE }),
       });
       await renderMealVotes();
     }
@@ -1250,47 +1228,51 @@ app.get('/api/members', async (req, res) => {
 
 // POST /api/vote — react to a meal
 app.post('/api/vote', async (req, res) => {
-  const { meal_id, member_id, reaction } = req.body;
+  const { meal_id, member_id, reaction, meal_date } = req.body;
   if (!meal_id || !member_id || !reaction) {
     return res.status(400).json({ error: 'meal_id, member_id, and reaction required' });
   }
-  const weekStart = localDateString(mondayOf(new Date()));
+
   try {
+    const mealDate = resolveMealVoteDate(meal_date);
+    const weekStart = mealVoteWeekContext(mealDate);
     await pool.query(
-      `INSERT INTO meal_votes (meal_id, member_id, reaction, week_context)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (meal_id, member_id, week_context)
-       DO UPDATE SET reaction = $3, created_at = NOW()`,
-      [meal_id, member_id, reaction, weekStart]
+      `INSERT INTO meal_votes (meal_id, member_id, reaction, week_context, meal_date)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (meal_id, member_id, meal_date)
+       DO UPDATE SET reaction = $3, week_context = $4, created_at = NOW()`,
+      [meal_id, member_id, reaction, weekStart, mealDate]
     );
-    // Return updated vote counts for this meal
+
     const { rows } = await pool.query(
       `SELECT v.reaction, f.name, f.avatar_emoji
        FROM meal_votes v
        JOIN family_members f ON f.id = v.member_id
-       WHERE v.meal_id = $1 AND v.week_context = $2`,
-      [meal_id, weekStart]
+       WHERE v.meal_id = $1 AND v.meal_date = $2`,
+      [meal_id, mealDate]
     );
     res.json({ success: true, votes: rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const statusCode = err.message && err.message.includes('meal_date must be a valid') ? 400 : 500;
+    res.status(statusCode).json({ error: err.message });
   }
 });
 
-// GET /api/votes/:meal_id — votes for a meal this week
+// GET /api/votes/:meal_id — votes for a meal on a given date
 app.get('/api/votes/:meal_id', async (req, res) => {
-  const weekStart = localDateString(mondayOf(new Date()));
   try {
+    const mealDate = resolveMealVoteDate(req.query.date);
     const { rows } = await pool.query(
       `SELECT v.reaction, f.name, f.avatar_emoji
        FROM meal_votes v
        JOIN family_members f ON f.id = v.member_id
-       WHERE v.meal_id = $1 AND v.week_context = $2`,
-      [req.params.meal_id, weekStart]
+       WHERE v.meal_id = $1 AND v.meal_date = $2`,
+      [req.params.meal_id, mealDate]
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const statusCode = err.message && err.message.includes('meal_date must be a valid') ? 400 : 500;
+    res.status(statusCode).json({ error: err.message });
   }
 });
 
@@ -1410,7 +1392,18 @@ app.get('/admin/meals', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-meals.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🍽️  Family Dinner running → http://0.0.0.0:${PORT}`);
-  console.log(`   Tonight display → http://0.0.0.0:${PORT}/tonight`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🍽️  Family Dinner running → http://0.0.0.0:${PORT}`);
+    console.log(`   Tonight display → http://0.0.0.0:${PORT}/tonight`);
+  });
+}
+
+module.exports = {
+  app,
+  localDateString,
+  mealVoteWeekContext,
+  mondayOf,
+  parseDateOnly,
+  resolveMealVoteDate,
+};

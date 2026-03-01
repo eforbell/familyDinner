@@ -70,11 +70,14 @@ Optional / current production use:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 
-For Magic Meal, `OPENAI_API_KEY` must be set. `OPENAI_MODEL=gpt-4o-mini` is a good default.
+For Magic Meal and Magic Grocery, `OPENAI_API_KEY` must be set. `OPENAI_MODEL=gpt-4o-mini` is a good default.
 
 ## Database Notes
 
-There are no migrations required for the current feature set beyond the existing schema files in `db/`.
+Apply the SQL files in `db/migrations/` in order for incremental updates. The current tree includes:
+
+- `001_order_in.sql`
+- `002_meal_vote_date.sql`
 
 Important app data:
 

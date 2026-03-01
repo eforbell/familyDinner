@@ -372,9 +372,7 @@ function printMagicGrocery() {
 
   document.body.classList.add('print-grocery-mode');
   window.addEventListener('afterprint', cleanup, { once: true });
-
-  // Fallback for browsers that do not fire afterprint reliably
-  setTimeout(cleanup, 1200);
+  window.addEventListener('focus', cleanup, { once: true });
   window.print();
 }
 
