@@ -695,9 +695,11 @@ app.get('/tonight', async (req, res) => {
     const meal    = today ? today.meal : null;
 
     const isOrderIn = !!(orderIn || (meal && meal.is_protected));
+    const canVoteMeal = !!(meal && !isOrderIn);
     const name      = meal ? meal.name : 'Nothing planned';
     const cook      = meal ? (meal.cook || '') : '';
     const rating    = meal ? (meal.kid_rating || '') : '';
+    const mealId    = meal ? meal.id : null;
 
     // Embed restaurants + current votes as JSON for the client script
     const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
@@ -765,9 +767,14 @@ app.get('/tonight', async (req, res) => {
   ` : `
     <div class="meal">${name}</div>
     <div class="meta">${cook} ${rating}</div>
+    ${canVoteMeal ? `
+      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
+      <div class="r-grid" id="meal-votes"></div>
+      <div class="sub" id="meal-vote-display" style="margin-top:.6rem;margin-bottom:0"></div>
+    ` : ''}
   `}
 
-  ${isOrderIn ? `
+  ${(isOrderIn || canVoteMeal) ? `
   <!-- Member picker overlay -->
   <div class="picker hidden" id="picker">
     <div class="picker-box">
@@ -777,32 +784,31 @@ app.get('/tonight', async (req, res) => {
   </div>
   ` : ''}
 
-  <a href="/" class="week-link">see the full week →</a>
+  <a href="./" class="week-link">see the full week →</a>
 
-  ${isOrderIn ? `
+  ${(isOrderIn || canVoteMeal) ? `
   <script>
-    const DATE      = '${dateStr}';
-    const votes     = ${votesJson};
+    const DATE = '${dateStr}';
+    const MEAL_ID = ${mealId || 'null'};
+    const orderInVotes = ${votesJson};
+    const MEAL_REACTIONS = ['❤️', '👍', '👎', '🤷'];
     let me = JSON.parse(localStorage.getItem('fd_member') || 'null');
-    let members     = [];
+    let members = [];
 
     async function init() {
       const res = await fetch('/api/members');
-      members   = await res.json();
-      renderGrid(votes);
+      members = await res.json();
+      if (document.getElementById('r-grid')) renderOrderInGrid(orderInVotes);
+      if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
     }
 
-    function myVote() {
-      return me ? votes.find(r => r.voters && r.voters.includes(me.name)) : null;
-    }
-
-    function renderGrid(v) {
+    function renderOrderInGrid(v) {
       const grid = document.getElementById('r-grid');
       if (!grid) return;
       const mv = me ? v.find(r => r.voters && r.voters.includes(me.name)) : null;
       grid.innerHTML = v.map(r => \`
         <button class="r-btn\${mv && mv.id === r.id ? ' active' : ''}"
-                onclick="castVote(\${r.id})">
+                onclick="castOrderInVote(\${r.id})">
           <span class="r-emoji">\${r.emoji}</span>
           <span class="r-name">\${r.name}</span>
           \${r.count > 0 ? \`<span class="r-count">\${r.count}</span>\` : ''}
@@ -810,20 +816,53 @@ app.get('/tonight', async (req, res) => {
         </button>\`).join('');
     }
 
-    async function castVote(restaurantId) {
-      if (!me) { openPicker(() => castVote(restaurantId)); return; }
-      const res  = await fetch(\`/api/order-in/\${DATE}/vote\`, {
+    async function castOrderInVote(restaurantId) {
+      if (!me) { openPicker(() => castOrderInVote(restaurantId)); return; }
+      const res = await fetch(\`/api/order-in/\${DATE}/vote\`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ restaurant_id: restaurantId, member_id: me.id }),
       });
       const data = await res.json();
-      if (data.order_in) renderGrid(data.order_in.votes);
+      if (data.order_in) renderOrderInGrid(data.order_in.votes);
+    }
+
+    async function renderMealVotes() {
+      const grid = document.getElementById('meal-votes');
+      if (!grid) return;
+
+      const res = await fetch(\`/api/votes/\${MEAL_ID}\`);
+      const votes = await res.json();
+      const myVote = me ? votes.find(v => v.name === me.name) : null;
+
+      grid.innerHTML = MEAL_REACTIONS.map(r => \`
+        <button class="r-btn\${myVote && myVote.reaction === r ? ' active' : ''}"
+                onclick="castMealVote('\${r}')">
+          <span class="r-emoji">\${r}</span>
+          <span class="r-name">React</span>
+        </button>\`).join('');
+
+      const display = document.getElementById('meal-vote-display');
+      if (display) {
+        display.textContent = votes.length
+          ? votes.map(v => \`${v.avatar_emoji} ${v.reaction}\`).join('  ')
+          : 'No reactions yet';
+      }
+    }
+
+    async function castMealVote(reaction) {
+      if (!me) { openPicker(() => castMealVote(reaction)); return; }
+      await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meal_id: MEAL_ID, member_id: me.id, reaction }),
+      });
+      await renderMealVotes();
     }
 
     function openPicker(cb) {
       const picker = document.getElementById('picker');
-      const grid   = document.getElementById('m-grid');
+      const grid = document.getElementById('m-grid');
       picker.classList.remove('hidden');
       grid.innerHTML = members.map(m => \`
         <button class="m-btn" onclick="pickMember(\${m.id})">
@@ -839,6 +878,7 @@ app.get('/tonight', async (req, res) => {
       document.getElementById('picker').classList.add('hidden');
       const cb = document.getElementById('picker')._cb;
       if (cb) cb();
+      if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
     }
 
     init();
