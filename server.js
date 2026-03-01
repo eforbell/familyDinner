@@ -796,7 +796,7 @@ app.get('/tonight', async (req, res) => {
     let members = [];
 
     async function init() {
-      const res = await fetch('/api/members');
+      const res = await fetch('./api/members');
       members = await res.json();
       if (document.getElementById('r-grid')) renderOrderInGrid(orderInVotes);
       if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
@@ -818,7 +818,7 @@ app.get('/tonight', async (req, res) => {
 
     async function castOrderInVote(restaurantId) {
       if (!me) { openPicker(() => castOrderInVote(restaurantId)); return; }
-      const res = await fetch(\`/api/order-in/\${DATE}/vote\`, {
+      const res = await fetch(\`./api/order-in/\${DATE}/vote\`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ restaurant_id: restaurantId, member_id: me.id }),
@@ -831,7 +831,7 @@ app.get('/tonight', async (req, res) => {
       const grid = document.getElementById('meal-votes');
       if (!grid) return;
 
-      const res = await fetch(\`/api/votes/\${MEAL_ID}\`);
+      const res = await fetch(\`./api/votes/\${MEAL_ID}\`);
       const votes = await res.json();
       const myVote = me ? votes.find(v => v.name === me.name) : null;
 
@@ -845,14 +845,14 @@ app.get('/tonight', async (req, res) => {
       const display = document.getElementById('meal-vote-display');
       if (display) {
         display.textContent = votes.length
-          ? votes.map(v => \`${v.avatar_emoji} ${v.reaction}\`).join('  ')
+          ? votes.map(v => \`\${v.avatar_emoji} \${v.reaction}\`).join('  ')
           : 'No reactions yet';
       }
     }
 
     async function castMealVote(reaction) {
       if (!me) { openPicker(() => castMealVote(reaction)); return; }
-      await fetch('/api/vote', {
+      await fetch('./api/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ meal_id: MEAL_ID, member_id: me.id, reaction }),
