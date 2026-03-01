@@ -2,6 +2,13 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
+const {
+  localDateString,
+  mealVoteWeekContext,
+  mondayOf,
+  parseDateOnly,
+  resolveMealVoteDate,
+} = require('./lib/date-utils');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,40 +23,18 @@ const DEFAULT_MAGIC_MEAL_PROMPT = [
   'Avoid creating a near-duplicate of an existing meal.',
   'Return one meal draft that can be edited and saved into the meal library.',
 ].join(' ');
+const DEFAULT_MAGIC_GROCERY_PROMPT = [
+  'Generate a practical grocery list for the upcoming family dinner week.',
+  'Use the week plan, meal details, and recipe tips to infer likely ingredients.',
+  'Consolidate duplicates and quantities across meals when possible.',
+  'Keep outputs realistic for a normal grocery run, grouped by store section.',
+  'Prefer concise, clear list items and include short prep notes only when useful.',
+].join(' ');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Helpers ──────────────────────────────────────────────────
-
-/** Returns the Monday (00:00 local) of the week containing `date`. */
-function mondayOf(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=Sun
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d;
-}
-
-function parseDateOnly(value) {
-  if (value instanceof Date) {
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate(), 12);
-  }
-
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map(Number);
-    return new Date(year, month - 1, day, 12);
-  }
-
-  return new Date(value);
-}
-
-function localDateString(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function parseTextList(value) {
   if (Array.isArray(value)) {
@@ -130,6 +115,12 @@ async function setAppConfigValue(key, value) {
 async function getMagicMealSettings() {
   return {
     magic_meal_prompt: await getAppConfigValue('magic_meal_prompt', DEFAULT_MAGIC_MEAL_PROMPT),
+  };
+}
+
+async function getMagicGrocerySettings() {
+  return {
+    magic_grocery_prompt: await getAppConfigValue('magic_grocery_prompt', DEFAULT_MAGIC_GROCERY_PROMPT),
   };
 }
 
@@ -334,6 +325,177 @@ async function generateMagicMeal(requestNotes = '') {
   };
 }
 
+async function getMagicGroceryContext(date) {
+  const [settings, week] = await Promise.all([
+    getMagicGrocerySettings(),
+    weekDataForDate(date),
+  ]);
+
+  const plannedMeals = week.days
+    .filter(day => day.meal && !day.order_in && !day.meal.is_protected)
+    .map(day => ({
+      date: day.date,
+      day_name: day.day_name,
+      meal_name: day.meal.name,
+      notes: day.meal.notes,
+      recipe_tips: day.meal.recipe_tips,
+      active_time_min: day.meal.active_time_min,
+      total_time_min: day.meal.total_time_min,
+      tags: day.meal.tags || [],
+      cook: day.meal.cook,
+    }));
+
+  const weekStartDate = parseDateOnly(week.week_start);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekEndDate.getDate() + 6);
+
+  return {
+    settings,
+    week_start: week.week_start,
+    week_end: localDateString(weekEndDate),
+    rotation_week: week.rotation_week,
+    planned_meals: plannedMeals,
+  };
+}
+
+async function generateMagicGroceryList(targetDate, requestNotes = '') {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured on the server.');
+  }
+
+  const context = await getMagicGroceryContext(targetDate);
+  if (!context.planned_meals.length) {
+    return {
+      list: {
+        title: 'Weekly Grocery List',
+        sections: [],
+        prep_notes: ['No cook-at-home meals found for this week.'],
+      },
+      context_summary: {
+        week_start: context.week_start,
+        week_end: context.week_end,
+        meal_count: 0,
+        prompt_used: context.settings.magic_grocery_prompt,
+      },
+    };
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      reasoning_effort: 'minimal',
+      max_completion_tokens: 2200,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'magic_grocery_list',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['title', 'sections', 'prep_notes'],
+            properties: {
+              title: { type: 'string' },
+              sections: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['name', 'items'],
+                  properties: {
+                    name: { type: 'string' },
+                    items: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['name', 'quantity', 'used_for'],
+                        properties: {
+                          name: { type: 'string' },
+                          quantity: { type: 'string' },
+                          used_for: {
+                            type: 'array',
+                            items: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              prep_notes: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You generate practical weekly grocery lists for a family dinner app.',
+            'Infer likely ingredients from meal names, notes, and recipe tips.',
+            'Consolidate overlapping ingredients and prefer realistic quantity estimates.',
+            'Group by typical grocery sections.',
+            'Return valid JSON that matches the schema exactly.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            task: 'Generate one consolidated grocery list for the planned week meals.',
+            stored_prompt: context.settings.magic_grocery_prompt,
+            request_notes: requestNotes,
+            week_start: context.week_start,
+            rotation_week: context.rotation_week,
+            planned_meals: context.planned_meals,
+          }),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const message = data.choices && data.choices[0] ? data.choices[0].message : null;
+  const finishReason = data.choices && data.choices[0] ? data.choices[0].finish_reason : '';
+  const refusal = message && typeof message.refusal === 'string' ? message.refusal : '';
+  const content = extractAssistantText(message);
+
+  if (!content) {
+    if (finishReason === 'length') {
+      throw new Error('OpenAI ran out of completion budget before returning the grocery list. Try a shorter request note or different model.');
+    }
+    throw new Error(refusal || `OpenAI did not return a grocery list. Raw response: ${JSON.stringify(data)}`);
+  }
+
+  const list = JSON.parse(content);
+  if (!list || !Array.isArray(list.sections)) {
+    throw new Error('Magic Grocery returned invalid JSON. Retry generation.');
+  }
+
+  return {
+    list,
+    context_summary: {
+      week_start: context.week_start,
+      week_end: context.week_end,
+      meal_count: context.planned_meals.length,
+      prompt_used: context.settings.magic_grocery_prompt,
+    },
+  };
+}
+
 /** ISO day-of-week: Mon=1 … Sun=7 */
 function isoDay(date) {
   const d = date.getDay();
@@ -511,9 +673,11 @@ app.get('/tonight', async (req, res) => {
     const meal    = today ? today.meal : null;
 
     const isOrderIn = !!(orderIn || (meal && meal.is_protected));
+    const canVoteMeal = !!(meal && !isOrderIn);
     const name      = meal ? meal.name : 'Nothing planned';
     const cook      = meal ? (meal.cook || '') : '';
     const rating    = meal ? (meal.kid_rating || '') : '';
+    const mealId    = meal ? meal.id : null;
 
     // Embed restaurants + current votes as JSON for the client script
     const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
@@ -581,9 +745,14 @@ app.get('/tonight', async (req, res) => {
   ` : `
     <div class="meal">${name}</div>
     <div class="meta">${cook} ${rating}</div>
+    ${canVoteMeal ? `
+      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
+      <div class="r-grid" id="meal-votes"></div>
+      <div class="sub" id="meal-vote-display" style="margin-top:.6rem;margin-bottom:0"></div>
+    ` : ''}
   `}
 
-  ${isOrderIn ? `
+  ${(isOrderIn || canVoteMeal) ? `
   <!-- Member picker overlay -->
   <div class="picker hidden" id="picker">
     <div class="picker-box">
@@ -593,32 +762,31 @@ app.get('/tonight', async (req, res) => {
   </div>
   ` : ''}
 
-  <a href="/" class="week-link">see the full week →</a>
+  <a href="./" class="week-link">see the full week →</a>
 
-  ${isOrderIn ? `
+  ${(isOrderIn || canVoteMeal) ? `
   <script>
-    const DATE      = '${dateStr}';
-    const votes     = ${votesJson};
+    const DATE = '${dateStr}';
+    const MEAL_ID = ${mealId || 'null'};
+    const orderInVotes = ${votesJson};
+    const MEAL_REACTIONS = ['❤️', '👍', '👎', '🤷'];
     let me = JSON.parse(localStorage.getItem('fd_member') || 'null');
-    let members     = [];
+    let members = [];
 
     async function init() {
-      const res = await fetch('/api/members');
-      members   = await res.json();
-      renderGrid(votes);
+      const res = await fetch('./api/members');
+      members = await res.json();
+      if (document.getElementById('r-grid')) renderOrderInGrid(orderInVotes);
+      if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
     }
 
-    function myVote() {
-      return me ? votes.find(r => r.voters && r.voters.includes(me.name)) : null;
-    }
-
-    function renderGrid(v) {
+    function renderOrderInGrid(v) {
       const grid = document.getElementById('r-grid');
       if (!grid) return;
       const mv = me ? v.find(r => r.voters && r.voters.includes(me.name)) : null;
       grid.innerHTML = v.map(r => \`
         <button class="r-btn\${mv && mv.id === r.id ? ' active' : ''}"
-                onclick="castVote(\${r.id})">
+                onclick="castOrderInVote(\${r.id})">
           <span class="r-emoji">\${r.emoji}</span>
           <span class="r-name">\${r.name}</span>
           \${r.count > 0 ? \`<span class="r-count">\${r.count}</span>\` : ''}
@@ -626,20 +794,53 @@ app.get('/tonight', async (req, res) => {
         </button>\`).join('');
     }
 
-    async function castVote(restaurantId) {
-      if (!me) { openPicker(() => castVote(restaurantId)); return; }
-      const res  = await fetch(\`/api/order-in/\${DATE}/vote\`, {
+    async function castOrderInVote(restaurantId) {
+      if (!me) { openPicker(() => castOrderInVote(restaurantId)); return; }
+      const res = await fetch(\`./api/order-in/\${DATE}/vote\`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ restaurant_id: restaurantId, member_id: me.id }),
       });
       const data = await res.json();
-      if (data.order_in) renderGrid(data.order_in.votes);
+      if (data.order_in) renderOrderInGrid(data.order_in.votes);
+    }
+
+    async function renderMealVotes() {
+      const grid = document.getElementById('meal-votes');
+      if (!grid) return;
+
+      const res = await fetch(\`./api/votes/\${MEAL_ID}?date=\${encodeURIComponent(DATE)}\`);
+      const votes = await res.json();
+      const myVote = me ? votes.find(v => v.name === me.name) : null;
+
+      grid.innerHTML = MEAL_REACTIONS.map(r => \`
+        <button class="r-btn\${myVote && myVote.reaction === r ? ' active' : ''}"
+                onclick="castMealVote('\${r}')">
+          <span class="r-emoji">\${r}</span>
+          <span class="r-name">React</span>
+        </button>\`).join('');
+
+      const display = document.getElementById('meal-vote-display');
+      if (display) {
+        display.textContent = votes.length
+          ? votes.map(v => \`\${v.avatar_emoji} \${v.reaction}\`).join('  ')
+          : 'No reactions yet';
+      }
+    }
+
+    async function castMealVote(reaction) {
+      if (!me) { openPicker(() => castMealVote(reaction)); return; }
+      await fetch('./api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meal_id: MEAL_ID, member_id: me.id, reaction, meal_date: DATE }),
+      });
+      await renderMealVotes();
     }
 
     function openPicker(cb) {
       const picker = document.getElementById('picker');
-      const grid   = document.getElementById('m-grid');
+      const grid = document.getElementById('m-grid');
       picker.classList.remove('hidden');
       grid.innerHTML = members.map(m => \`
         <button class="m-btn" onclick="pickMember(\${m.id})">
@@ -655,6 +856,7 @@ app.get('/tonight', async (req, res) => {
       document.getElementById('picker').classList.add('hidden');
       const cb = document.getElementById('picker')._cb;
       if (cb) cb();
+      if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
     }
 
     init();
@@ -817,6 +1019,41 @@ app.post('/api/magic-meal', async (req, res) => {
       ? String(req.body.request_notes).trim()
       : '';
     res.json(await generateMagicMeal(requestNotes));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/magic-grocery/settings', async (req, res) => {
+  try {
+    res.json(await getMagicGrocerySettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/magic-grocery/settings', async (req, res) => {
+  const prompt = String(req.body.magic_grocery_prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'magic_grocery_prompt is required' });
+
+  try {
+    await setAppConfigValue('magic_grocery_prompt', prompt);
+    res.json({ success: true, magic_grocery_prompt: prompt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/magic-grocery', async (req, res) => {
+  try {
+    const requestNotes = req.body && req.body.request_notes
+      ? String(req.body.request_notes).trim()
+      : '';
+    const targetDate = req.body && req.body.week_start_date
+      ? parseDateOnly(String(req.body.week_start_date))
+      : new Date();
+
+    res.json(await generateMagicGroceryList(targetDate, requestNotes));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -991,47 +1228,51 @@ app.get('/api/members', async (req, res) => {
 
 // POST /api/vote — react to a meal
 app.post('/api/vote', async (req, res) => {
-  const { meal_id, member_id, reaction } = req.body;
+  const { meal_id, member_id, reaction, meal_date } = req.body;
   if (!meal_id || !member_id || !reaction) {
     return res.status(400).json({ error: 'meal_id, member_id, and reaction required' });
   }
-  const weekStart = localDateString(mondayOf(new Date()));
+
   try {
+    const mealDate = resolveMealVoteDate(meal_date);
+    const weekStart = mealVoteWeekContext(mealDate);
     await pool.query(
-      `INSERT INTO meal_votes (meal_id, member_id, reaction, week_context)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (meal_id, member_id, week_context)
-       DO UPDATE SET reaction = $3, created_at = NOW()`,
-      [meal_id, member_id, reaction, weekStart]
+      `INSERT INTO meal_votes (meal_id, member_id, reaction, week_context, meal_date)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (meal_id, member_id, meal_date)
+       DO UPDATE SET reaction = $3, week_context = $4, created_at = NOW()`,
+      [meal_id, member_id, reaction, weekStart, mealDate]
     );
-    // Return updated vote counts for this meal
+
     const { rows } = await pool.query(
       `SELECT v.reaction, f.name, f.avatar_emoji
        FROM meal_votes v
        JOIN family_members f ON f.id = v.member_id
-       WHERE v.meal_id = $1 AND v.week_context = $2`,
-      [meal_id, weekStart]
+       WHERE v.meal_id = $1 AND v.meal_date = $2`,
+      [meal_id, mealDate]
     );
     res.json({ success: true, votes: rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const statusCode = err.message && err.message.includes('meal_date must be a valid') ? 400 : 500;
+    res.status(statusCode).json({ error: err.message });
   }
 });
 
-// GET /api/votes/:meal_id — votes for a meal this week
+// GET /api/votes/:meal_id — votes for a meal on a given date
 app.get('/api/votes/:meal_id', async (req, res) => {
-  const weekStart = localDateString(mondayOf(new Date()));
   try {
+    const mealDate = resolveMealVoteDate(req.query.date);
     const { rows } = await pool.query(
       `SELECT v.reaction, f.name, f.avatar_emoji
        FROM meal_votes v
        JOIN family_members f ON f.id = v.member_id
-       WHERE v.meal_id = $1 AND v.week_context = $2`,
-      [req.params.meal_id, weekStart]
+       WHERE v.meal_id = $1 AND v.meal_date = $2`,
+      [req.params.meal_id, mealDate]
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const statusCode = err.message && err.message.includes('meal_date must be a valid') ? 400 : 500;
+    res.status(statusCode).json({ error: err.message });
   }
 });
 
@@ -1151,7 +1392,18 @@ app.get('/admin/meals', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-meals.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🍽️  Family Dinner running → http://0.0.0.0:${PORT}`);
-  console.log(`   Tonight display → http://0.0.0.0:${PORT}/tonight`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🍽️  Family Dinner running → http://0.0.0.0:${PORT}`);
+    console.log(`   Tonight display → http://0.0.0.0:${PORT}/tonight`);
+  });
+}
+
+module.exports = {
+  app,
+  localDateString,
+  mealVoteWeekContext,
+  mondayOf,
+  parseDateOnly,
+  resolveMealVoteDate,
+};

@@ -11,6 +11,7 @@ Small household dinner-planning app for answering "what's for dinner?", managing
 - Supports order-in nights with restaurant voting
 - Lets you manage the meal library from an admin page
 - Includes `Magic Meal`, which drafts a new meal idea using meal history, votes, and cook frequency, then lets you review/edit before saving
+- Includes `Magic Grocery`, which builds a consolidated grocery list from the current week plan and meal details
 
 ## Stack
 
@@ -43,6 +44,9 @@ No build step. Single-process app.
 - `GET /api/magic-meal/settings`
 - `PUT /api/magic-meal/settings`
 - `POST /api/magic-meal`
+- `GET /api/magic-grocery/settings`
+- `PUT /api/magic-grocery/settings`
+- `POST /api/magic-grocery`
 
 ## Local Run
 
@@ -66,11 +70,14 @@ Optional / current production use:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 
-For Magic Meal, `OPENAI_API_KEY` must be set. `OPENAI_MODEL=gpt-4o-mini` is a good default.
+For Magic Meal and Magic Grocery, `OPENAI_API_KEY` must be set. `OPENAI_MODEL=gpt-4o-mini` is a good default.
 
 ## Database Notes
 
-There are no migrations required for the current feature set beyond the existing schema files in `db/`.
+Apply the SQL files in `db/migrations/` in order for incremental updates. The current tree includes:
+
+- `001_order_in.sql`
+- `002_meal_vote_date.sql`
 
 Important app data:
 
@@ -82,6 +89,7 @@ Important app data:
 - `app_config` stores app settings such as:
   - `rotation_start_date`
   - `magic_meal_prompt`
+  - `magic_grocery_prompt`
 
 ## Deployment
 
