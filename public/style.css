@@ -747,6 +747,69 @@ button { cursor: pointer; font-family: inherit; }
   gap: 0.75rem;
 }
 
+.cook-history-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.cook-history-toggle {
+  align-items: center;
+  min-height: 100%;
+  padding-top: 1.6rem;
+}
+
+.history-summary-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+}
+
+.history-summary-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.history-summary-card {
+  align-items: start;
+  background: linear-gradient(145deg, rgba(41,37,36,.95), rgba(28,25,23,.95));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 0.85rem 0.9rem;
+}
+
+.history-summary-count {
+  color: var(--accent);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 2.2rem;
+}
+
+.history-summary-body {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.history-summary-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.history-summary-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .cook-history-table-wrap {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -968,7 +1031,12 @@ button { cursor: pointer; font-family: inherit; }
   }
 
   .cook-history-filters {
-    grid-template-columns: minmax(0, 1.7fr) minmax(160px, 0.9fr);
+    align-items: end;
+    grid-template-columns: minmax(0, 1.5fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  }
+
+  .history-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .meal-form-grid {

@@ -46,7 +46,32 @@
             <span>From date</span>
             <input id="cook-history-from" type="date">
           </label>
+          <label class="form-field">
+            <span>To date</span>
+            <input id="cook-history-to" type="date">
+          </label>
+          <label class="toggle-field cook-history-toggle">
+            <input id="cook-history-changed-only" type="checkbox">
+            <span>Changed from plan only</span>
+          </label>
         </div>
+
+        <div class="cook-history-presets">
+          <button id="cook-history-last-month" class="btn-ghost" type="button">Last Month</button>
+          <button id="cook-history-clear-filters" class="btn-ghost" type="button">Clear filters</button>
+        </div>
+
+        <section class="history-summary-panel">
+          <div class="meal-editor-head">
+            <div>
+              <h2>Most cooked meals</h2>
+              <p id="cook-history-summary-meta" class="muted">Counts update with your current filters.</p>
+            </div>
+          </div>
+          <div id="cook-history-summary" class="history-summary-grid">
+            <p class="muted">Loading summary…</p>
+          </div>
+        </section>
 
         <div id="cook-history-table-wrap" class="cook-history-table-wrap">
           <p class="muted">Loading cook history…</p>
