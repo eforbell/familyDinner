@@ -729,6 +729,156 @@ button { cursor: pointer; font-family: inherit; }
   overflow: auto;
 }
 
+.cook-history-panel {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.cook-history-head {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.cook-history-filters {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cook-history-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.cook-history-toggle {
+  align-items: center;
+  min-height: 100%;
+  padding-top: 1.6rem;
+}
+
+.history-summary-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+}
+
+.history-summary-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.history-summary-card {
+  align-items: start;
+  background: linear-gradient(145deg, rgba(41,37,36,.95), rgba(28,25,23,.95));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 0.85rem 0.9rem;
+}
+
+.history-summary-count {
+  color: var(--accent);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 2.2rem;
+}
+
+.history-summary-body {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.history-summary-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.history-summary-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.cook-history-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: auto;
+}
+
+.cook-history-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: 100%;
+}
+
+.cook-history-table th,
+.cook-history-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cook-history-table th {
+  background: rgba(41,37,36,.96);
+  color: var(--muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+}
+
+.cook-history-table td {
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.cook-history-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cook-history-meal-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(249,115,22,.35);
+  text-underline-offset: 0.14em;
+}
+
+.cook-history-meal-link:hover {
+  color: #fb923c;
+}
+
+.admin-link-panel {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.history-admin-layout {
+  padding: 0 1rem 2rem;
+}
+
 .meal-list-item {
   align-items: flex-start;
   background: linear-gradient(145deg, rgba(41,37,36,.95), rgba(28,25,23,.95));
@@ -878,6 +1028,15 @@ button { cursor: pointer; font-family: inherit; }
   .meal-admin-layout {
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
     align-items: start;
+  }
+
+  .cook-history-filters {
+    align-items: end;
+    grid-template-columns: minmax(0, 1.5fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  }
+
+  .history-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .meal-form-grid {
