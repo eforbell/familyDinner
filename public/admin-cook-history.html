@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Cook History</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <div id="app" class="admin-app">
+    <header class="admin-header">
+      <div>
+        <div class="week-badge">Meal Admin</div>
+        <h1>Cook History</h1>
+      </div>
+      <div class="admin-header-actions">
+        <a href="../admin/meals" class="btn-ghost admin-home-link">Meal admin</a>
+        <a href="../admin" class="btn-ghost admin-home-link">Rotation admin</a>
+        <a href="../" class="btn-ghost admin-home-link">Back to dinner</a>
+      </div>
+    </header>
+
+    <section class="admin-intro">
+      <p class="admin-copy">Browse logged dinners, filter recent history, export CSV, and jump back into the meal editor from any cooked or planned meal.</p>
+      <p id="cook-history-status" class="admin-status hidden"></p>
+    </section>
+
+    <section class="history-admin-layout">
+      <section class="meal-editor-panel">
+        <div class="meal-editor-head">
+          <div>
+            <h2>History filters</h2>
+            <p id="cook-history-meta" class="muted">Recent nights logged from the dinner plan.</p>
+          </div>
+          <a href="../api/cook-log/export.csv" class="btn-ghost admin-home-link">Export CSV</a>
+        </div>
+
+        <div class="cook-history-filters">
+          <label class="form-field">
+            <span>Filter by meal</span>
+            <input id="cook-history-search" type="search" placeholder="Search cooked or planned meals">
+          </label>
+          <label class="form-field">
+            <span>From date</span>
+            <input id="cook-history-from" type="date">
+          </label>
+        </div>
+
+        <div id="cook-history-table-wrap" class="cook-history-table-wrap">
+          <p class="muted">Loading cook history…</p>
+        </div>
+      </section>
+    </section>
+  </div>
+
+  <script src="../admin-cook-history.js"></script>
+</body>
+</html>

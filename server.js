@@ -9,6 +9,10 @@ const {
   parseDateOnly,
   resolveMealVoteDate,
 } = require('./lib/date-utils');
+const {
+  cookLogRowsToCsv,
+  parsePositiveInt,
+} = require('./lib/cook-log');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -192,6 +196,33 @@ async function getMagicMealContext() {
       };
     }),
   };
+}
+
+async function getCookLogEntries(limit = 150) {
+  const safeLimit = Math.min(parsePositiveInt(limit, 150), 1000);
+  const { rows } = await pool.query(
+    `SELECT c.id,
+            c.cooked_date,
+            c.meal_id,
+            cooked.name AS meal_name,
+            c.planned_meal_id,
+            planned.name AS planned_meal_name,
+            c.was_planned,
+            c.notes,
+            c.created_at
+     FROM cook_log c
+     LEFT JOIN meals cooked ON cooked.id = c.meal_id
+     LEFT JOIN meals planned ON planned.id = c.planned_meal_id
+     ORDER BY c.cooked_date DESC, c.created_at DESC, c.id DESC
+     LIMIT $1`,
+    [safeLimit]
+  );
+
+  return rows.map(row => ({
+    ...row,
+    meal_name: row.meal_name || 'Unknown meal',
+    planned_meal_name: row.planned_meal_name || null,
+  }));
 }
 
 async function generateMagicMeal(requestNotes = '') {
@@ -1293,6 +1324,32 @@ app.post('/api/log', async (req, res) => {
   }
 });
 
+app.get('/api/cook-log', async (req, res) => {
+  try {
+    const limit = parsePositiveInt(req.query.limit, 150);
+    const rows = await getCookLogEntries(limit);
+    res.json({
+      entries: rows,
+      count: rows.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/cook-log/export.csv', async (req, res) => {
+  try {
+    const rows = await getCookLogEntries(1000);
+    const csv = cookLogRowsToCsv(rows);
+    const today = localDateString(new Date());
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="cook-history-${today}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/energy — Alex's weekly energy flag
 app.post('/api/energy', async (req, res) => {
   const { energy_level, note } = req.body;
@@ -1390,6 +1447,10 @@ app.get('/admin', (req, res) => {
 
 app.get('/admin/meals', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-meals.html'));
+});
+
+app.get('/admin/cook-history', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-cook-history.html'));
 });
 
 if (require.main === module) {

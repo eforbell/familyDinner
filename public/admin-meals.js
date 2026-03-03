@@ -31,6 +31,11 @@ async function loadMeals() {
     meals = [...data.meals].sort((a, b) => a.name.localeCompare(b.name));
     filteredMeals = meals;
     renderMealList();
+    const preselectedMealId = getMealIdFromQuery();
+    if (preselectedMealId) {
+      await selectMeal(preselectedMealId);
+      return;
+    }
     if (!selectedMealId) resetForm();
   } catch (err) {
     setStatus('Could not load meals.', true);
@@ -74,6 +79,12 @@ function applySearch() {
         return haystack.includes(query);
       });
   renderMealList();
+}
+
+function getMealIdFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const mealId = Number(params.get('mealId'));
+  return Number.isInteger(mealId) && mealId > 0 ? mealId : null;
 }
 
 async function selectMeal(mealId) {
