@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS cook_log (
   planned_meal_id INTEGER REFERENCES meals(id),
   was_planned  BOOLEAN DEFAULT true,
   notes        TEXT,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(cooked_date, meal_id)
 );
 
 -- Alex's energy flag per week (1=rough week → 5=project meal week)

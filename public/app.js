@@ -429,14 +429,11 @@ async function logMadeIt() {
   const btn = document.getElementById('made-it-btn');
   if (!btn) return;
 
-  // Vanish immediately — Alex-proof
   btn.disabled = true;
-  btn.textContent = '✓ Logged!';
-  btn.classList.add('logged');
-  setTimeout(() => btn.remove(), 1200);
+  btn.textContent = 'Logging...';
 
   try {
-    await fetch('api/log', {
+    const res = await fetch('api/log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -444,8 +441,16 @@ async function logMadeIt() {
         planned_meal_id: tonightMealId,
       }),
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'log failed');
+
+    btn.textContent = data.already_logged ? '✓ Already logged' : '✓ Logged!';
+    btn.classList.add('logged');
+    setTimeout(() => btn.remove(), 1200);
   } catch (e) {
     console.error('Log failed', e);
+    btn.disabled = false;
+    btn.textContent = 'We made it ✅';
   }
 }
 

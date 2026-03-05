@@ -78,6 +78,7 @@ Apply the SQL files in `db/migrations/` in order for incremental updates. The cu
 
 - `001_order_in.sql`
 - `002_meal_vote_date.sql`
+- `003_cook_log_unique_daily_meal.sql`
 
 Important app data:
 

@@ -1313,12 +1313,13 @@ app.post('/api/log', async (req, res) => {
   if (!meal_id) return res.status(400).json({ error: 'meal_id required' });
   const date = cooked_date || localDateString(new Date());
   try {
-    await pool.query(
+    const { rowCount } = await pool.query(
       `INSERT INTO cook_log (cooked_date, meal_id, planned_meal_id, was_planned, notes)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (cooked_date, meal_id) DO NOTHING`,
       [date, meal_id, planned_meal_id || null, meal_id === planned_meal_id, notes || null]
     );
-    res.json({ success: true });
+    res.json({ success: true, already_logged: rowCount === 0 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
