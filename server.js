@@ -30,6 +30,11 @@ const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_RECIPE_MODEL = process.env.OPENAI_RECIPE_MODEL || OPENAI_MODEL;
+const RECIPE_IMPORT_USER_AGENT = process.env.RECIPE_IMPORT_USER_AGENT || [
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+  'AppleWebKit/537.36 (KHTML, like Gecko)',
+  'Chrome/136.0.0.0 Safari/537.36',
+].join(' ');
 const DEFAULT_MAGIC_MEAL_PROMPT = [
   'Design one new dinner idea for this household.',
   'Use the family meal history, ratings, and repetition patterns to find something that fits.',
@@ -421,11 +426,20 @@ async function generateRecipeImportDraft(sourceUrl) {
 
   const response = await fetch(parsedUrl.toString(), {
     headers: {
-      'User-Agent': 'familyDinner recipe importer',
+      'User-Agent': RECIPE_IMPORT_USER_AGENT,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Upgrade-Insecure-Requests': '1',
+      'Referer': `${parsedUrl.protocol}//${parsedUrl.hostname}/`,
     },
   });
 
   if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('Recipe source fetch failed: 403 forbidden. This site is blocking automated fetches; try another URL or paste the recipe manually.');
+    }
     throw new Error(`Recipe source fetch failed: ${response.status}`);
   }
 
