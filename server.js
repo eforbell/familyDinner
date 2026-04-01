@@ -1135,11 +1135,11 @@ app.get('/tonight', async (req, res) => {
 	  <meta name="viewport" content="width=device-width, initial-scale=1">
 	  <meta name="theme-color" content="#0f0f0f">
 	  <title>Tonight's Dinner 🍽️</title>
-	  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-	  <link rel="stylesheet" href="/style.css">
+	  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+	  <link rel="stylesheet" href="style.css">
 	  <meta property="og:title" content="Tonight's Dinner">
 	  <meta property="og:description" content="${safeOgDescription}">
-  <meta property="og:image" content="/og-image.svg">
+	  <meta property="og:image" content="og-image.svg">
   <meta property="og:type" content="website">
 	  <style>
 	    * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1241,8 +1241,8 @@ app.get('/tonight', async (req, res) => {
 	  <a href="./" class="week-link">see the full week →</a>
 	  </div>
 
-	  <script src="/theme.js"></script>
-	  <script src="/nav.js"></script>
+	  <script src="theme.js"></script>
+	  <script src="nav.js"></script>
 	  ${(isOrderIn || canVoteMeal) ? `
 	  <script>
     const DATE = '${dateStr}';
