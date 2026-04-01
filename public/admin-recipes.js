@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadRecipes() {
   try {
-    const res = await fetch('/api/recipes');
+    const res = await fetch('../api/recipes');
     recipes = await res.json();
     filteredRecipes = recipes;
     renderRecipeList();
@@ -35,7 +35,7 @@ async function loadRecipes() {
 
 async function loadRecipeSettings() {
   try {
-    const res = await fetch('/api/recipe-import/settings');
+    const res = await fetch('../api/recipe-import/settings');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not load recipe settings');
     document.getElementById('magic-recipe-import-prompt').value = data.magic_recipe_import_prompt || '';
@@ -47,7 +47,7 @@ async function loadRecipeSettings() {
 
 async function saveRecipeSettings() {
   try {
-    const res = await fetch('/api/recipe-import/settings', {
+    const res = await fetch('../api/recipe-import/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -99,14 +99,14 @@ function applySearch() {
 
 async function selectRecipe(recipeId) {
   try {
-    const res = await fetch(`/api/recipes/${recipeId}`);
+    const res = await fetch(`../api/recipes/${recipeId}`);
     const recipe = await res.json();
     if (!res.ok) throw new Error(recipe.error || 'Could not load recipe');
     selectedRecipeId = recipe.id;
     fillForm(recipe);
     renderRecipeList();
     updateEditorState(recipe);
-    history.replaceState(null, '', `/admin/recipes?recipeId=${recipe.id}`);
+    history.replaceState(null, '', `recipes?recipeId=${recipe.id}`);
   } catch (err) {
     setStatus(err.message || 'Could not load recipe.', true);
   }
@@ -129,7 +129,7 @@ function resetForm() {
   hideImportSummary();
   updateEditorState(null);
   renderRecipeList();
-  history.replaceState(null, '', '/admin/recipes');
+  history.replaceState(null, '', 'recipes');
 }
 
 function updateEditorState(recipe) {
@@ -140,7 +140,7 @@ function updateEditorState(recipe) {
 
   const viewLink = document.getElementById('recipe-view-link');
   viewLink.classList.toggle('hidden', !selectedRecipeId);
-  if (selectedRecipeId) viewLink.href = `/recipes/${selectedRecipeId}`;
+  if (selectedRecipeId) viewLink.href = `../recipes/${selectedRecipeId}`;
 
   const createMealBtn = document.getElementById('recipe-create-meal-btn');
   createMealBtn.classList.toggle('hidden', !selectedRecipeId);
@@ -149,7 +149,7 @@ function updateEditorState(recipe) {
   const linkedMeal = recipe && recipe.linked_meal ? recipe.linked_meal : null;
   linkedMealLink.classList.toggle('hidden', !linkedMeal);
   if (linkedMeal) {
-    linkedMealLink.href = `/admin/meals?mealId=${linkedMeal.id}`;
+    linkedMealLink.href = `meals?mealId=${linkedMeal.id}`;
     linkedMealLink.textContent = `Open linked meal: ${linkedMeal.name}`;
   }
 }
@@ -165,7 +165,7 @@ async function importRecipe() {
   button.disabled = true;
   button.textContent = 'Importing…';
   try {
-    const res = await fetch('/api/recipes/import', {
+    const res = await fetch('../api/recipes/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -253,7 +253,7 @@ async function saveRecipe(event) {
   try {
     const payload = buildPayload();
     const method = selectedRecipeId ? 'PUT' : 'POST';
-    const url = selectedRecipeId ? `/api/recipes/${selectedRecipeId}` : '/api/recipes';
+    const url = selectedRecipeId ? `../api/recipes/${selectedRecipeId}` : '../api/recipes';
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -275,7 +275,7 @@ async function saveRecipe(event) {
 async function createMealFromRecipe() {
   if (!selectedRecipeId) return;
   try {
-    const res = await fetch(`/api/recipes/${selectedRecipeId}/create-meal`, { method: 'POST' });
+    const res = await fetch(`../api/recipes/${selectedRecipeId}/create-meal`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not create meal');
     const message = data.created ? 'Meal created from recipe.' : 'Recipe already has a linked meal.';

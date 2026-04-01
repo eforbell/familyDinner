@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadRecipes() {
   try {
-    const res = await fetch('/api/recipes');
+    const res = await fetch('api/recipes');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not load recipes');
     recipes = data;
@@ -39,7 +39,7 @@ function renderRecipeList() {
   }
 
   list.innerHTML = filteredRecipes.map(recipe => `
-    <a class="meal-list-item" href="/recipes/${recipe.id}">
+    <a class="meal-list-item" href="recipes/${recipe.id}">
       <span class="meal-list-name">${esc(recipe.title)}</span>
       <span class="meal-list-meta">
         ${recipe.total_time_min ? `${recipe.total_time_min} min` : 'time flexible'}

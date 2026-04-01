@@ -41,3 +41,19 @@ test('cook-view template includes a back link to the recipe browser', () => {
   assert.match(html, /Back to recipes/);
   assert.match(html, /href="\.\.\/recipes"/);
 });
+
+test('recipe browser and builder scripts use relative app paths for subpath deployments', () => {
+  const browserScript = fs.readFileSync(path.join(__dirname, '..', 'public', 'recipes.js'), 'utf8');
+  const builderScript = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-recipes.js'), 'utf8');
+  const browserHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'recipes.html'), 'utf8');
+  const builderHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-recipes.html'), 'utf8');
+
+  assert.match(browserScript, /fetch\('api\/recipes'\)/);
+  assert.match(browserScript, /href="recipes\/\$\{recipe\.id\}"/);
+  assert.match(browserHtml, /href="admin\/recipes"/);
+
+  assert.match(builderScript, /fetch\('\.\.\/api\/recipes'\)/);
+  assert.match(builderScript, /history\.replaceState\(null, '', `recipes\?recipeId=\$\{recipe\.id\}`\)/);
+  assert.match(builderScript, /viewLink\.href = `\.\.\/recipes\/\$\{selectedRecipeId\}`/);
+  assert.match(builderHtml, /href="\.\.\/recipes"/);
+});
