@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const fs = require('fs');
 const { Pool } = require('pg');
 const path = require('path');
 const {
@@ -60,6 +61,7 @@ const DEFAULT_MAGIC_GROCERY_PROMPT = [
   'Keep outputs realistic for a normal grocery run, grouped by store section.',
   'Prefer concise, clear list items and include short prep notes only when useful.',
 ].join(' ');
+const RECIPE_DETAIL_TEMPLATE = fs.readFileSync(path.join(__dirname, 'public', 'recipe.html'), 'utf8');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -132,6 +134,32 @@ function extractAssistantText(message) {
       .trim();
   }
   return '';
+}
+
+function renderRecipeDetailPage(recipe) {
+  const recipeName = recipe && recipe.title ? recipe.title : 'Recipe';
+  const pageTitle = `${recipeName} · Family Dinner`;
+  const ogDescription = recipe && recipe.description
+    ? recipe.description
+    : `Cook view for ${recipeName}.`;
+
+  return RECIPE_DETAIL_TEMPLATE
+    .replace(
+      '<title>Recipe</title>',
+      `<title>${escapeHtml(pageTitle)}</title>
+  <meta property="og:title" content="${escapeHtml(recipeName)}">
+  <meta property="og:description" content="${escapeHtml(ogDescription)}">
+  <meta property="og:image" content="../og-image.svg">
+  <meta property="og:type" content="article">`
+    )
+    .replace(
+      '<h1 id="recipe-detail-title">Recipe</h1>',
+      `<h1 id="recipe-detail-title">${escapeHtml(recipeName)}</h1>`
+    )
+    .replace(
+      '<p id="recipe-detail-description" class="admin-copy"></p>',
+      `<p id="recipe-detail-description" class="admin-copy">${escapeHtml(recipe && recipe.description ? recipe.description : '')}</p>`
+    );
 }
 
 function escapeHtml(value) {
@@ -2095,12 +2123,31 @@ app.get('/admin/cook-history', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-cook-history.html'));
 });
 
+app.get('/admin/recipes', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-recipes.html'));
+});
+
 app.get('/recipes', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'recipes.html'));
 });
 
 app.get('/recipes/:id', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'recipe.html'));
+  const recipeId = Number(req.params.id);
+  if (!Number.isInteger(recipeId) || recipeId < 1) {
+    return res.send(RECIPE_DETAIL_TEMPLATE);
+  }
+
+  getRecipeById(recipeId)
+    .then(recipe => {
+      if (!recipe) {
+        res.send(RECIPE_DETAIL_TEMPLATE);
+        return;
+      }
+      res.send(renderRecipeDetailPage(recipe));
+    })
+    .catch(() => {
+      res.send(RECIPE_DETAIL_TEMPLATE);
+    });
 });
 
 if (require.main === module) {
@@ -2117,5 +2164,6 @@ module.exports = {
   mealVoteWeekContext,
   mondayOf,
   parseDateOnly,
+  renderRecipeDetailPage,
   resolveMealVoteDate,
 };

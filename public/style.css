@@ -864,6 +864,11 @@ body.app-has-nav header {
   padding-right: 0;
 }
 
+body.app-has-nav .recipe-detail-page .admin-header {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .admin-header-actions {
   display: flex;
   flex-wrap: wrap;

@@ -1,0 +1,43 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { app } = require('../server');
+
+test('recipe browser and builder pages are served separately', async (t) => {
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const address = server.address();
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve));
+  });
+
+  const browserRes = await fetch(`${baseUrl}/recipes`);
+  assert.equal(browserRes.status, 200);
+  const browserHtml = await browserRes.text();
+  assert.match(browserHtml, /Browse recipes/);
+  assert.match(browserHtml, /Open builder/);
+  assert.doesNotMatch(browserHtml, /id="recipe-import-url"/);
+
+  const builderRes = await fetch(`${baseUrl}/admin/recipes`);
+  assert.equal(builderRes.status, 200);
+  const builderHtml = await builderRes.text();
+  assert.match(builderHtml, /Recipe Builder/);
+  assert.match(builderHtml, /Import from URL/);
+  assert.match(builderHtml, /id="recipe-import-url"/);
+  assert.match(builderHtml, /new-recipe-btn/);
+});
+
+test('cook-view edit action points to the recipe builder route', () => {
+  const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'recipe.js'), 'utf8');
+  assert.match(script, /\.\.\/admin\/recipes\?recipeId=/);
+});
+
+test('cook-view template includes a back link to the recipe browser', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'recipe.html'), 'utf8');
+  assert.match(html, /Back to recipes/);
+  assert.match(html, /href="\.\.\/recipes"/);
+});

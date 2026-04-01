@@ -20,6 +20,7 @@
     { id: 'week', label: 'Week', icon: 'week', path: '' },
     { id: 'recipes', label: 'Recipes', icon: 'recipes', path: 'recipes' },
     { id: 'tonight', label: 'Tonight', icon: 'tonight', path: 'tonight' },
+    { id: 'recipe-builder', label: 'Recipe Builder', icon: 'recipes', path: 'admin/recipes' },
     { id: 'meals', label: 'Meals', icon: 'meals', path: 'admin/meals' },
     { id: 'planner', label: 'Planner', icon: 'planner', path: 'admin' },
   ];
@@ -78,7 +79,7 @@
     <div class="fd-more-sheet-panel">
       <div class="fd-more-sheet-header">
         <strong>More</strong>
-        <span class="muted">Meals and planning tools</span>
+        <span class="muted">Recipe, meal, and planning tools</span>
       </div>
       ${secondaryItems.map(item => navItemHtml(item, item.id === activePage)).join('')}
     </div>

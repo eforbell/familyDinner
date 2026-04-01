@@ -24,7 +24,7 @@ function renderRecipe(recipe) {
   document.title = `${recipe.title} · Family Dinner`;
   document.getElementById('recipe-detail-title').textContent = recipe.title;
   document.getElementById('recipe-detail-description').textContent = recipe.description || 'No description yet.';
-  document.getElementById('recipe-detail-edit').href = `../recipes?recipeId=${recipe.id}`;
+  document.getElementById('recipe-detail-edit').href = `../admin/recipes?recipeId=${recipe.id}`;
 
   const meta = [];
   if (recipe.servings_text) meta.push(recipe.servings_text);
