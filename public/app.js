@@ -68,6 +68,8 @@ function renderTonight() {
     new Date(today.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   if (!meal) {
+    const recipeLink = document.getElementById('tonight-recipe-link');
+    if (recipeLink) recipeLink.classList.add('hidden');
     document.getElementById('tonight-name').textContent = 'Nothing planned';
     return;
   }
@@ -75,8 +77,14 @@ function renderTonight() {
   tonightMealId = meal.id;
 
   const orderIn = today.order_in;
+  const recipeLink = document.getElementById('tonight-recipe-link');
+  if (recipeLink) {
+    recipeLink.classList.toggle('hidden', !meal.recipe_id);
+    if (meal.recipe_id) recipeLink.href = `recipes/${meal.recipe_id}`;
+  }
 
   if (orderIn || (meal && meal.is_protected)) {
+    if (recipeLink) recipeLink.classList.add('hidden');
     document.getElementById('tonight-name').textContent = 'Order In Night 🛵';
     document.getElementById('tonight-notes').textContent = 'No cooking tonight.';
     document.getElementById('tonight-meta').innerHTML = '';
@@ -223,6 +231,7 @@ function buildDayExpandHtml(day) {
     ${equip}
     <div class="day-actions" style="margin-top:.75rem">
       <div class="vote-buttons" id="day-votes-${day.date}"></div>
+      ${meal.recipe_id ? `<a class="btn-ghost" href="recipes/${meal.recipe_id}">Recipe</a>` : ''}
       <button class="btn-swap" onclick="openSwap('${day.date}', 'day')">Swap ⇄</button>
       <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
     </div>

@@ -13,6 +13,15 @@ const {
   cookLogRowsToCsv,
   parsePositiveInt,
 } = require('./lib/cook-log');
+const {
+  assertSafeRecipeSourceUrl,
+  buildImportSource,
+} = require('./lib/recipe-import');
+const {
+  normalizeRecipePayload,
+  recipeToMealDraft,
+  validateRecipePayload,
+} = require('./lib/recipe-normalize');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,12 +29,24 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const OPENAI_RECIPE_MODEL = process.env.OPENAI_RECIPE_MODEL || OPENAI_MODEL;
 const DEFAULT_MAGIC_MEAL_PROMPT = [
   'Design one new dinner idea for this household.',
   'Use the family meal history, ratings, and repetition patterns to find something that fits.',
   'Prefer practical dinners that feel like a house standard, not restaurant fantasy food.',
   'Avoid creating a near-duplicate of an existing meal.',
   'Return one meal draft that can be edited and saved into the meal library.',
+].join(' ');
+const DEFAULT_MAGIC_RECIPE_IMPORT_PROMPT = [
+  'Extract a structured family-friendly recipe from the source material.',
+  'Remove story text and unrelated content.',
+  'Preserve useful ingredient, yield, and timing details when supported by the source.',
+  'Return ordered ingredients and detailed, cook-friendly steps.',
+  'Do not invent unsupported ingredients or major recipe changes.',
+].join(' ');
+const DEFAULT_MAGIC_RECIPE_DETAIL_PROMPT = [
+  'When the source instructions are terse, expand them into more explicit home-cook guidance.',
+  'Keep the recipe faithful to the source while making the steps easier to follow.',
 ].join(' ');
 const DEFAULT_MAGIC_GROCERY_PROMPT = [
   'Generate a practical grocery list for the upcoming family dinner week.',
@@ -60,6 +81,9 @@ function normalizeMealPayload(body) {
     : Number(body.total_time_min);
 
   return {
+    recipe_id: body.recipe_id === '' || body.recipe_id == null
+      ? null
+      : Number(body.recipe_id),
     name: String(body.name || '').trim(),
     notes: body.notes ? String(body.notes).trim() : null,
     recipe_tips: body.recipe_tips ? String(body.recipe_tips).trim() : null,
@@ -76,6 +100,9 @@ function normalizeMealPayload(body) {
 
 function validateMealPayload(meal) {
   if (!meal.name) return 'name is required';
+  if (meal.recipe_id !== null && (!Number.isInteger(meal.recipe_id) || meal.recipe_id < 1)) {
+    return 'recipe_id must be a valid recipe id';
+  }
   if (meal.active_time_min !== null && (!Number.isInteger(meal.active_time_min) || meal.active_time_min < 0)) {
     return 'active_time_min must be a non-negative integer';
   }
@@ -102,6 +129,15 @@ function extractAssistantText(message) {
   return '';
 }
 
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function getAppConfigValue(key, fallback = null) {
   const { rows } = await pool.query('SELECT value FROM app_config WHERE key = $1', [key]);
   return rows.length ? rows[0].value : fallback;
@@ -125,6 +161,366 @@ async function getMagicMealSettings() {
 async function getMagicGrocerySettings() {
   return {
     magic_grocery_prompt: await getAppConfigValue('magic_grocery_prompt', DEFAULT_MAGIC_GROCERY_PROMPT),
+  };
+}
+
+async function getMagicRecipeSettings() {
+  return {
+    magic_recipe_import_prompt: await getAppConfigValue('magic_recipe_import_prompt', DEFAULT_MAGIC_RECIPE_IMPORT_PROMPT),
+    magic_recipe_detail_prompt: await getAppConfigValue('magic_recipe_detail_prompt', DEFAULT_MAGIC_RECIPE_DETAIL_PROMPT),
+  };
+}
+
+function createRecipeResponseSchema() {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'recipe_import_draft',
+      strict: true,
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'title',
+          'description',
+          'source_url',
+          'source_domain',
+          'source_title',
+          'servings_text',
+          'prep_time_min',
+          'cook_time_min',
+          'total_time_min',
+          'notes',
+          'tags',
+          'image_url',
+          'ingredients',
+          'steps',
+        ],
+        properties: {
+          title: { type: 'string' },
+          description: { type: ['string', 'null'] },
+          source_url: { type: ['string', 'null'] },
+          source_domain: { type: ['string', 'null'] },
+          source_title: { type: ['string', 'null'] },
+          servings_text: { type: ['string', 'null'] },
+          prep_time_min: { type: ['integer', 'null'], minimum: 0 },
+          cook_time_min: { type: ['integer', 'null'], minimum: 0 },
+          total_time_min: { type: ['integer', 'null'], minimum: 0 },
+          notes: { type: ['string', 'null'] },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          image_url: { type: ['string', 'null'] },
+          ingredients: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['display_text', 'quantity_text', 'unit_text', 'ingredient_text', 'prep_note'],
+              properties: {
+                display_text: { type: 'string' },
+                quantity_text: { type: ['string', 'null'] },
+                unit_text: { type: ['string', 'null'] },
+                ingredient_text: { type: ['string', 'null'] },
+                prep_note: { type: ['string', 'null'] },
+              },
+            },
+          },
+          steps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['title', 'instruction_text'],
+              properties: {
+                title: { type: ['string', 'null'] },
+                instruction_text: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+async function getRecipeById(recipeId) {
+  const { rows } = await pool.query(
+    `SELECT r.*,
+            linked.id AS linked_meal_id,
+            linked.name AS linked_meal_name
+     FROM recipes r
+     LEFT JOIN LATERAL (
+       SELECT id, name
+       FROM meals
+       WHERE recipe_id = r.id
+       ORDER BY id
+       LIMIT 1
+     ) linked ON true
+     WHERE r.id = $1`,
+    [recipeId]
+  );
+
+  if (!rows.length) return null;
+
+  const recipe = rows[0];
+  const [ingredientsResult, stepsResult] = await Promise.all([
+    pool.query(
+      `SELECT position, display_text, quantity_text, unit_text, ingredient_text, prep_note
+       FROM recipe_ingredients
+       WHERE recipe_id = $1
+       ORDER BY position`,
+      [recipeId]
+    ),
+    pool.query(
+      `SELECT position, title, instruction_text
+       FROM recipe_steps
+       WHERE recipe_id = $1
+       ORDER BY position`,
+      [recipeId]
+    ),
+  ]);
+
+  return {
+    ...recipe,
+    linked_meal: recipe.linked_meal_id ? {
+      id: recipe.linked_meal_id,
+      name: recipe.linked_meal_name,
+    } : null,
+    ingredients: ingredientsResult.rows,
+    steps: stepsResult.rows,
+  };
+}
+
+async function writeRecipeChildren(client, recipeId, recipe) {
+  await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [recipeId]);
+  await client.query('DELETE FROM recipe_steps WHERE recipe_id = $1', [recipeId]);
+
+  for (const ingredient of recipe.ingredients) {
+    await client.query(
+      `INSERT INTO recipe_ingredients (
+         recipe_id, position, display_text, quantity_text, unit_text, ingredient_text, prep_note
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        recipeId,
+        ingredient.position,
+        ingredient.display_text,
+        ingredient.quantity_text,
+        ingredient.unit_text,
+        ingredient.ingredient_text,
+        ingredient.prep_note,
+      ]
+    );
+  }
+
+  for (const step of recipe.steps) {
+    await client.query(
+      `INSERT INTO recipe_steps (
+         recipe_id, position, title, instruction_text
+       ) VALUES ($1, $2, $3, $4)`,
+      [recipeId, step.position, step.title, step.instruction_text]
+    );
+  }
+}
+
+async function saveRecipe(recipe, existingRecipeId = null) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let recipeId = existingRecipeId;
+    if (existingRecipeId) {
+      const { rowCount } = await client.query(
+        `UPDATE recipes
+         SET title = $2,
+             description = $3,
+             source_url = $4,
+             source_domain = $5,
+             source_title = $6,
+             servings_text = $7,
+             prep_time_min = $8,
+             cook_time_min = $9,
+             total_time_min = $10,
+             notes = $11,
+             tags = $12,
+             image_url = $13,
+             created_by_member_id = $14,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [
+          existingRecipeId,
+          recipe.title,
+          recipe.description,
+          recipe.source_url,
+          recipe.source_domain,
+          recipe.source_title,
+          recipe.servings_text,
+          recipe.prep_time_min,
+          recipe.cook_time_min,
+          recipe.total_time_min,
+          recipe.notes,
+          recipe.tags,
+          recipe.image_url,
+          recipe.created_by_member_id,
+        ]
+      );
+      if (!rowCount) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+    } else {
+      const { rows } = await client.query(
+        `INSERT INTO recipes (
+           title, description, source_url, source_domain, source_title, servings_text,
+           prep_time_min, cook_time_min, total_time_min, notes, tags, image_url, created_by_member_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING id`,
+        [
+          recipe.title,
+          recipe.description,
+          recipe.source_url,
+          recipe.source_domain,
+          recipe.source_title,
+          recipe.servings_text,
+          recipe.prep_time_min,
+          recipe.cook_time_min,
+          recipe.total_time_min,
+          recipe.notes,
+          recipe.tags,
+          recipe.image_url,
+          recipe.created_by_member_id,
+        ]
+      );
+      recipeId = rows[0].id;
+    }
+
+    await writeRecipeChildren(client, recipeId, recipe);
+
+    if (recipe.import_id) {
+      await client.query(
+        `UPDATE recipe_imports
+         SET recipe_id = $2
+         WHERE id = $1`,
+        [recipe.import_id, recipeId]
+      );
+    }
+
+    await client.query('COMMIT');
+    return recipeId;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function generateRecipeImportDraft(sourceUrl) {
+  const parsedUrl = await assertSafeRecipeSourceUrl(sourceUrl);
+
+  const response = await fetch(parsedUrl.toString(), {
+    headers: {
+      'User-Agent': 'familyDinner recipe importer',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Recipe source fetch failed: ${response.status}`);
+  }
+
+  const html = await response.text();
+  const source = buildImportSource(html, parsedUrl.toString());
+  const settings = await getMagicRecipeSettings();
+
+  let draft = source.baselineDraft;
+  let extractorModel = source.usedJsonLd ? 'json-ld' : 'heuristic';
+  let fetchStatus = 'fallback';
+
+  if (OPENAI_API_KEY) {
+    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OPENAI_RECIPE_MODEL,
+        reasoning_effort: 'minimal',
+        max_completion_tokens: 2200,
+        response_format: createRecipeResponseSchema(),
+        messages: [
+          {
+            role: 'system',
+            content: [
+              'You clean up web recipe extractions for a household dinner app.',
+              'Return valid JSON matching the provided schema.',
+              settings.magic_recipe_import_prompt,
+              settings.magic_recipe_detail_prompt,
+            ].join(' '),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              url: parsedUrl.toString(),
+              baseline_draft: source.baselineDraft,
+              source_title: source.sourceTitle,
+              used_json_ld: source.usedJsonLd,
+              source_excerpt: source.cleanedTextExcerpt,
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      throw new Error(`OpenAI request failed: ${aiResponse.status} ${errorText}`);
+    }
+
+    const data = await aiResponse.json();
+    const message = data.choices && data.choices[0] ? data.choices[0].message : null;
+    const content = extractAssistantText(message);
+    if (!content) {
+      throw new Error('OpenAI did not return a recipe draft.');
+    }
+    draft = JSON.parse(content);
+    extractorModel = OPENAI_RECIPE_MODEL;
+    fetchStatus = 'ok';
+  }
+
+  if (!draft || !draft.title || !Array.isArray(draft.ingredients) || !Array.isArray(draft.steps)) {
+    throw new Error('Recipe extraction did not produce a usable recipe draft.');
+  }
+
+  const normalizedDraft = normalizeRecipePayload(draft);
+  if (!normalizedDraft.source_url) normalizedDraft.source_url = parsedUrl.toString();
+  if (!normalizedDraft.source_domain) normalizedDraft.source_domain = parsedUrl.hostname.replace(/^www\./, '');
+  if (!normalizedDraft.source_title) normalizedDraft.source_title = source.sourceTitle;
+
+  const { rows } = await pool.query(
+    `INSERT INTO recipe_imports (
+       source_url, fetch_status, extractor_model, raw_text_excerpt, extracted_json, error_message
+     ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+     RETURNING id`,
+    [
+      parsedUrl.toString(),
+      fetchStatus,
+      extractorModel,
+      source.cleanedTextExcerpt,
+      JSON.stringify(normalizedDraft),
+      null,
+    ]
+  );
+
+  return {
+    draft: normalizedDraft,
+    import_record_id: rows[0].id,
+    context_summary: {
+      used_json_ld: source.usedJsonLd,
+      model_used: extractorModel,
+      prompt_used: settings.magic_recipe_import_prompt,
+    },
   };
 }
 
@@ -709,75 +1105,109 @@ app.get('/tonight', async (req, res) => {
     const cook      = meal ? (meal.cook || '') : '';
     const rating    = meal ? (meal.kid_rating || '') : '';
     const mealId    = meal ? meal.id : null;
+    const safeDayName = escapeHtml(dayName);
+    const safeName = escapeHtml(name);
+    const safeCook = escapeHtml(cook);
+    const safeRating = escapeHtml(rating);
+    const safeOgDescription = escapeHtml(isOrderIn ? 'Order in night — vote for where!' : name);
 
     // Embed restaurants + current votes as JSON for the client script
     const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
 
     res.send(`<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tonight's Dinner 🍽️</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+	<head>
+	  <meta charset="UTF-8">
+	  <meta name="viewport" content="width=device-width, initial-scale=1">
+	  <meta name="theme-color" content="#0f0f0f">
+	  <title>Tonight's Dinner 🍽️</title>
+	  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <meta property="og:title" content="Tonight's Dinner">
-  <meta property="og:description" content="${isOrderIn ? 'Order in night — vote for where!' : name}">
+	  <meta property="og:description" content="${safeOgDescription}">
   <meta property="og:image" content="/og-image.svg">
   <meta property="og:type" content="website">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #0f0f0f; color: #fafaf9;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100dvh; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      text-align: center; padding: 2rem 1.5rem;
-    }
-    .day   { font-size: 1rem; color: #a8a29e; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1rem; }
-    .label { font-size: .85rem; color: #f97316; letter-spacing: .2em; text-transform: uppercase; margin-bottom: .5rem; }
-    .meal  { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
-    .meta  { font-size: 1.8rem; }
-    .sub   { color: #6b7280; font-size: 1rem; margin-bottom: 1.5rem; }
-    /* Restaurant voting grid */
-    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; width: 100%; max-width: 360px; margin: 1rem auto 0; }
-    .r-btn  {
-      background: #1c1917; border: 1px solid #3a3330; border-radius: 12px;
-      color: #fafaf9; cursor: pointer; font-family: inherit;
-      display: flex; flex-direction: column; align-items: center; gap: .2rem;
-      padding: .9rem .5rem; transition: border-color .15s, background .15s;
-    }
-    .r-btn:hover  { background: #292524; border-color: #57534e; }
-    .r-btn.active { border-color: #f97316; background: rgba(249,115,22,.12); }
-    .r-emoji  { font-size: 1.8rem; line-height: 1; }
-    .r-name   { font-size: .85rem; font-weight: 600; }
-    .r-count  { font-size: 1.1rem; font-weight: 700; color: #f97316; }
-    .r-voters { font-size: .7rem; color: #a8a29e; }
-    /* Member picker */
-    .picker { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; padding: 1rem; }
-    .picker.hidden { display: none; }
-    .picker-box { background: #1c1917; border: 1px solid #3a3330; border-radius: 14px; padding: 1.5rem; width: 100%; max-width: 320px; }
-    .picker-box h2 { margin-bottom: 1rem; font-size: 1.1rem; }
-    .m-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-    .m-btn  { background: #0f0f0f; border: 1px solid #3a3330; border-radius: 10px; color: #fafaf9; cursor: pointer; font-family: inherit; padding: .9rem .5rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; transition: border-color .15s; }
-    .m-btn:hover { border-color: #f97316; }
-    .m-avatar { font-size: 1.6rem; }
-    .week-link { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); color: #57534e; font-size: .8rem; text-decoration: none; letter-spacing: .08em; border-bottom: 1px solid #3a3330; padding-bottom: 1px; }
-    .week-link:hover { color: #a8a29e; }
-  </style>
-</head>
-<body>
-  <div class="day">${dayName}</div>
-  <div class="label">Tonight's Dinner</div>
+	  <style>
+	    * { margin: 0; padding: 0; box-sizing: border-box; }
+	    :root {
+	      --bg: #0f0f0f;
+	      --surface: #1c1917;
+	      --surface2: #292524;
+	      --border: #3a3330;
+	      --accent: #f97316;
+	      --text: #fafaf9;
+	      --muted: #a8a29e;
+	      --dim: #6b7280;
+	    }
+	    :root[data-theme="light"] {
+	      --bg: #f6f1eb;
+	      --surface: #fffaf5;
+	      --surface2: #f0e7de;
+	      --border: #d6c7b8;
+	      --accent: #d97706;
+	      --text: #201714;
+	      --muted: #6f6258;
+	      --dim: #8c7b6f;
+	    }
+	    body {
+	      background: var(--bg); color: var(--text);
+	      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	      min-height: 100dvh; display: flex; flex-direction: column;
+	      align-items: center; justify-content: center;
+	      text-align: center; padding: 2rem 1.5rem;
+	    }
+	    .theme-toggle {
+	      position: fixed; top: 1rem; right: 1rem;
+	      background: transparent; border: 1px solid var(--border); border-radius: 999px;
+	      color: var(--text); cursor: pointer; font: inherit; min-width: 42px; padding: .5rem .75rem;
+	    }
+	    .day   { font-size: 1rem; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1rem; }
+	    .label { font-size: .85rem; color: var(--accent); letter-spacing: .2em; text-transform: uppercase; margin-bottom: .5rem; }
+	    .meal  { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
+	    .meta  { font-size: 1.8rem; }
+	    .sub   { color: var(--dim); font-size: 1rem; margin-bottom: 1.5rem; }
+	    /* Restaurant voting grid */
+	    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; width: 100%; max-width: 360px; margin: 1rem auto 0; }
+	    .r-btn  {
+	      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+	      color: var(--text); cursor: pointer; font-family: inherit;
+	      display: flex; flex-direction: column; align-items: center; gap: .2rem;
+	      padding: .9rem .5rem; transition: border-color .15s, background .15s;
+	    }
+	    .r-btn:hover  { background: var(--surface2); border-color: var(--muted); }
+	    .r-btn.active { border-color: var(--accent); background: rgba(249,115,22,.12); }
+	    .r-emoji  { font-size: 1.8rem; line-height: 1; }
+	    .r-name   { font-size: .85rem; font-weight: 600; }
+	    .r-count  { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+	    .r-voters { font-size: .7rem; color: var(--muted); }
+	    /* Member picker */
+	    .picker { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+	    .picker.hidden { display: none; }
+	    .picker-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; width: 100%; max-width: 320px; }
+	    .picker-box h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+	    .m-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+	    .m-btn  { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); cursor: pointer; font-family: inherit; padding: .9rem .5rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; transition: border-color .15s; }
+	    .m-btn:hover { border-color: var(--accent); }
+	    .m-avatar { font-size: 1.6rem; }
+	    .week-link { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); color: var(--dim); font-size: .8rem; text-decoration: none; letter-spacing: .08em; border-bottom: 1px solid var(--border); padding-bottom: 1px; }
+	    .week-link:hover { color: var(--muted); }
+	    .recipe-link { display: inline-block; margin-top: .9rem; color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(249,115,22,.35); padding-bottom: 1px; }
+		  </style>
+		</head>
+		<body>
+	  <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+	  <div class="day">${safeDayName}</div>
+	  <div class="label">Tonight's Dinner</div>
 
   ${isOrderIn ? `
     <div class="meal">Order In Night 🛵</div>
     <div class="sub">No cooking tonight — pick your spot</div>
     <div class="r-grid" id="r-grid"></div>
-  ` : `
-    <div class="meal">${name}</div>
-    <div class="meta">${cook} ${rating}</div>
-    ${canVoteMeal ? `
-      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
+	  ` : `
+	    <div class="meal">${safeName}</div>
+	    <div class="meta">${safeCook} ${safeRating}</div>
+	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">open recipe →</a>` : ''}
+	    ${canVoteMeal ? `
+	      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
       <div class="r-grid" id="meal-votes"></div>
       <div class="sub" id="meal-vote-display" style="margin-top:.6rem;margin-bottom:0"></div>
     ` : ''}
@@ -795,8 +1225,9 @@ app.get('/tonight', async (req, res) => {
 
   <a href="./" class="week-link">see the full week →</a>
 
-  ${(isOrderIn || canVoteMeal) ? `
-  <script>
+	  <script src="/theme.js"></script>
+	  ${(isOrderIn || canVoteMeal) ? `
+	  <script>
     const DATE = '${dateStr}';
     const MEAL_ID = ${mealId || 'null'};
     const orderInVotes = ${votesJson};
@@ -930,10 +1361,199 @@ app.get('/api/week', async (req, res) => {
   }
 });
 
+app.get('/api/recipe-import/settings', async (req, res) => {
+  try {
+    res.json(await getMagicRecipeSettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/recipe-import/settings', async (req, res) => {
+  const importPrompt = String(req.body.magic_recipe_import_prompt || '').trim();
+  const detailPrompt = String(req.body.magic_recipe_detail_prompt || '').trim();
+  if (!importPrompt || !detailPrompt) {
+    return res.status(400).json({ error: 'Both recipe import prompts are required.' });
+  }
+
+  try {
+    await Promise.all([
+      setAppConfigValue('magic_recipe_import_prompt', importPrompt),
+      setAppConfigValue('magic_recipe_detail_prompt', detailPrompt),
+    ]);
+    res.json({
+      success: true,
+      magic_recipe_import_prompt: importPrompt,
+      magic_recipe_detail_prompt: detailPrompt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/recipes/import', async (req, res) => {
+  try {
+    const sourceUrl = req.body && req.body.url ? String(req.body.url).trim() : '';
+    if (!sourceUrl) return res.status(400).json({ error: 'url is required' });
+    res.json(await generateRecipeImportDraft(sourceUrl));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/recipes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.id,
+              r.title,
+              r.description,
+              r.source_url,
+              r.source_domain,
+              r.total_time_min,
+              r.tags,
+              r.created_at,
+              linked.id AS linked_meal_id,
+              linked.name AS linked_meal_name,
+              COALESCE(ingredient_counts.count, 0)::int AS ingredient_count,
+              COALESCE(step_counts.count, 0)::int AS step_count
+       FROM recipes r
+       LEFT JOIN LATERAL (
+         SELECT id, name
+         FROM meals
+         WHERE recipe_id = r.id
+         ORDER BY id
+         LIMIT 1
+       ) linked ON true
+       LEFT JOIN (
+         SELECT recipe_id, COUNT(*) AS count
+         FROM recipe_ingredients
+         GROUP BY recipe_id
+       ) ingredient_counts ON ingredient_counts.recipe_id = r.id
+       LEFT JOIN (
+         SELECT recipe_id, COUNT(*) AS count
+         FROM recipe_steps
+         GROUP BY recipe_id
+       ) step_counts ON step_counts.recipe_id = r.id
+       ORDER BY r.title`
+    );
+
+    res.json(rows.map(row => ({
+      ...row,
+      linked_meal: row.linked_meal_id ? {
+        id: row.linked_meal_id,
+        name: row.linked_meal_name,
+      } : null,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/recipes', async (req, res) => {
+  const recipe = normalizeRecipePayload(req.body);
+  const validationError = validateRecipePayload(recipe);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  try {
+    const recipeId = await saveRecipe(recipe);
+    res.status(201).json(await getRecipeById(recipeId));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/recipes/:id', async (req, res) => {
+  const recipeId = Number(req.params.id);
+  if (!Number.isInteger(recipeId) || recipeId < 1) {
+    return res.status(400).json({ error: 'invalid recipe id' });
+  }
+
+  try {
+    const recipe = await getRecipeById(recipeId);
+    if (!recipe) return res.status(404).json({ error: 'Not found' });
+    res.json(recipe);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/recipes/:id', async (req, res) => {
+  const recipeId = Number(req.params.id);
+  if (!Number.isInteger(recipeId) || recipeId < 1) {
+    return res.status(400).json({ error: 'invalid recipe id' });
+  }
+
+  const recipe = normalizeRecipePayload(req.body);
+  const validationError = validateRecipePayload(recipe);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  try {
+    const savedRecipeId = await saveRecipe(recipe, recipeId);
+    if (!savedRecipeId) return res.status(404).json({ error: 'Not found' });
+    res.json(await getRecipeById(savedRecipeId));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/recipes/:id/create-meal', async (req, res) => {
+  const recipeId = Number(req.params.id);
+  if (!Number.isInteger(recipeId) || recipeId < 1) {
+    return res.status(400).json({ error: 'invalid recipe id' });
+  }
+
+  try {
+    const recipe = await getRecipeById(recipeId);
+    if (!recipe) return res.status(404).json({ error: 'Not found' });
+
+    const existingMealResult = await pool.query(
+      'SELECT id, name, recipe_id FROM meals WHERE recipe_id = $1 ORDER BY id LIMIT 1',
+      [recipeId]
+    );
+
+    if (existingMealResult.rows.length) {
+      return res.json({
+        created: false,
+        meal: existingMealResult.rows[0],
+      });
+    }
+
+    const mealDraft = recipeToMealDraft(recipe);
+    const { rows } = await pool.query(
+      `INSERT INTO meals (
+         recipe_id, name, notes, recipe_tips, active_time_min, total_time_min,
+         equipment, cook, kid_rating, is_new, is_protected, tags
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, recipe_id, name`,
+      [
+        recipeId,
+        mealDraft.name,
+        mealDraft.notes,
+        mealDraft.recipe_tips,
+        mealDraft.active_time_min,
+        mealDraft.total_time_min,
+        mealDraft.equipment,
+        mealDraft.cook,
+        mealDraft.kid_rating,
+        mealDraft.is_new,
+        mealDraft.is_protected,
+        mealDraft.tags,
+      ]
+    );
+
+    res.status(201).json({
+      created: true,
+      meal: rows[0],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/meals — all meals (for swap dropdown)
 app.get('/api/meals', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, name, cook, kid_rating, is_protected FROM meals ORDER BY name');
+    const { rows } = await pool.query('SELECT id, recipe_id, name, cook, kid_rating, is_protected FROM meals ORDER BY name');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -948,11 +1568,12 @@ app.post('/api/meals', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `INSERT INTO meals (
-        name, notes, recipe_tips, active_time_min, total_time_min,
+        recipe_id, name, notes, recipe_tips, active_time_min, total_time_min,
         equipment, cook, kid_rating, is_new, is_protected, tags
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
+        meal.recipe_id,
         meal.name,
         meal.notes,
         meal.recipe_tips,
@@ -978,13 +1599,13 @@ app.get('/api/rotation', async (req, res) => {
     const [{ rows: slots }, { rows: meals }, { rows: config }] = await Promise.all([
       pool.query(
         `SELECT r.week_number, r.day_of_week, r.meal_id,
-                m.name, m.cook, m.kid_rating, m.is_protected, m.is_new
+                m.name, m.recipe_id, m.cook, m.kid_rating, m.is_protected, m.is_new
          FROM meal_rotation r
          LEFT JOIN meals m ON m.id = r.meal_id
          ORDER BY r.week_number, r.day_of_week`
       ),
       pool.query(
-        `SELECT id, name, cook, kid_rating, is_protected, is_new, tags
+        `SELECT id, recipe_id, name, cook, kid_rating, is_protected, is_new, tags
          FROM meals
          ORDER BY name`
       ),
@@ -1004,6 +1625,7 @@ app.get('/api/rotation', async (req, res) => {
           meal: slot && slot.meal_id ? {
             id: slot.meal_id,
             name: slot.name,
+            recipe_id: slot.recipe_id,
             cook: slot.cook,
             kid_rating: slot.kid_rating,
             is_protected: slot.is_protected,
@@ -1114,21 +1736,23 @@ app.put('/api/meals/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE meals
-       SET name = $2,
-           notes = $3,
-           recipe_tips = $4,
-           active_time_min = $5,
-           total_time_min = $6,
-           equipment = $7,
-           cook = $8,
-           kid_rating = $9,
-           is_new = $10,
-           is_protected = $11,
-           tags = $12
+       SET recipe_id = $2,
+           name = $3,
+           notes = $4,
+           recipe_tips = $5,
+           active_time_min = $6,
+           total_time_min = $7,
+           equipment = $8,
+           cook = $9,
+           kid_rating = $10,
+           is_new = $11,
+           is_protected = $12,
+           tags = $13
        WHERE id = $1
        RETURNING *`,
       [
         mealId,
+        meal.recipe_id,
         meal.name,
         meal.notes,
         meal.recipe_tips,
@@ -1203,7 +1827,7 @@ app.put('/api/rotation-slot', async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT r.week_number, r.day_of_week, r.meal_id,
-              m.name, m.cook, m.kid_rating, m.is_protected, m.is_new
+              m.name, m.recipe_id, m.cook, m.kid_rating, m.is_protected, m.is_new
        FROM meal_rotation r
        LEFT JOIN meals m ON m.id = r.meal_id
        WHERE r.week_number = $1 AND r.day_of_week = $2`,
@@ -1454,6 +2078,14 @@ app.get('/admin/cook-history', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-cook-history.html'));
 });
 
+app.get('/recipes', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'recipes.html'));
+});
+
+app.get('/recipes/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'recipe.html'));
+});
+
 if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🍽️  Family Dinner running → http://0.0.0.0:${PORT}`);
@@ -1463,6 +2095,7 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  escapeHtml,
   localDateString,
   mealVoteWeekContext,
   mondayOf,
