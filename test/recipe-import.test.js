@@ -2,9 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  assertSafeRecipeSourceUrl,
   buildImportSource,
   extractRecipeJsonLd,
   inferDomainFromUrl,
+  isPrivateAddress,
   stripHtml,
 } = require('../lib/recipe-import');
 
@@ -58,4 +60,23 @@ test('stripHtml removes tags while preserving readable text', () => {
 test('inferDomainFromUrl returns a clean hostname', () => {
   assert.equal(inferDomainFromUrl('https://www.example.com/recipe'), 'example.com');
   assert.equal(inferDomainFromUrl('not-a-url'), null);
+});
+
+test('isPrivateAddress identifies loopback and RFC1918 ranges', () => {
+  assert.equal(isPrivateAddress('127.0.0.1'), true);
+  assert.equal(isPrivateAddress('192.168.1.20'), true);
+  assert.equal(isPrivateAddress('10.0.0.5'), true);
+  assert.equal(isPrivateAddress('::1'), true);
+  assert.equal(isPrivateAddress('8.8.8.8'), false);
+});
+
+test('assertSafeRecipeSourceUrl blocks localhost and private-network URLs', async () => {
+  await assert.rejects(
+    () => assertSafeRecipeSourceUrl('http://127.0.0.1:3000/test'),
+    /private-network addresses/
+  );
+  await assert.rejects(
+    () => assertSafeRecipeSourceUrl('http://localhost:3000/test'),
+    /private-network addresses/
+  );
 });

@@ -14,6 +14,7 @@ const {
   parsePositiveInt,
 } = require('./lib/cook-log');
 const {
+  assertSafeRecipeSourceUrl,
   buildImportSource,
 } = require('./lib/recipe-import');
 const {
@@ -126,6 +127,15 @@ function extractAssistantText(message) {
       .trim();
   }
   return '';
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function getAppConfigValue(key, fallback = null) {
@@ -407,16 +417,7 @@ async function saveRecipe(recipe, existingRecipeId = null) {
 }
 
 async function generateRecipeImportDraft(sourceUrl) {
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(sourceUrl);
-  } catch {
-    throw new Error('A valid recipe URL is required.');
-  }
-
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('Only http and https recipe URLs are supported.');
-  }
+  const parsedUrl = await assertSafeRecipeSourceUrl(sourceUrl);
 
   const response = await fetch(parsedUrl.toString(), {
     headers: {
@@ -1104,6 +1105,11 @@ app.get('/tonight', async (req, res) => {
     const cook      = meal ? (meal.cook || '') : '';
     const rating    = meal ? (meal.kid_rating || '') : '';
     const mealId    = meal ? meal.id : null;
+    const safeDayName = escapeHtml(dayName);
+    const safeName = escapeHtml(name);
+    const safeCook = escapeHtml(cook);
+    const safeRating = escapeHtml(rating);
+    const safeOgDescription = escapeHtml(isOrderIn ? 'Order in night — vote for where!' : name);
 
     // Embed restaurants + current votes as JSON for the client script
     const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
@@ -1117,7 +1123,7 @@ app.get('/tonight', async (req, res) => {
 	  <title>Tonight's Dinner 🍽️</title>
 	  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <meta property="og:title" content="Tonight's Dinner">
-  <meta property="og:description" content="${isOrderIn ? 'Order in night — vote for where!' : name}">
+	  <meta property="og:description" content="${safeOgDescription}">
   <meta property="og:image" content="/og-image.svg">
   <meta property="og:type" content="website">
 	  <style>
@@ -1189,16 +1195,16 @@ app.get('/tonight', async (req, res) => {
 		</head>
 		<body>
 	  <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
-	  <div class="day">${dayName}</div>
-  <div class="label">Tonight's Dinner</div>
+	  <div class="day">${safeDayName}</div>
+	  <div class="label">Tonight's Dinner</div>
 
   ${isOrderIn ? `
     <div class="meal">Order In Night 🛵</div>
     <div class="sub">No cooking tonight — pick your spot</div>
     <div class="r-grid" id="r-grid"></div>
 	  ` : `
-	    <div class="meal">${name}</div>
-	    <div class="meta">${cook} ${rating}</div>
+	    <div class="meal">${safeName}</div>
+	    <div class="meta">${safeCook} ${safeRating}</div>
 	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">open recipe →</a>` : ''}
 	    ${canVoteMeal ? `
 	      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
@@ -2089,6 +2095,7 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  escapeHtml,
   localDateString,
   mealVoteWeekContext,
   mondayOf,
