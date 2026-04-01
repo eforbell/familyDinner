@@ -8,18 +8,15 @@
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../style.css">
 </head>
-<body>
+<body data-nav-page="meals" data-nav-root="..">
   <div id="app" class="admin-app">
     <header class="admin-header">
       <div>
-        <div class="week-badge">Meal Admin</div>
+        <div class="week-badge">Meals</div>
         <h1>Meal Library</h1>
       </div>
       <div class="admin-header-actions">
         <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
-        <a href="../admin" class="btn-ghost admin-home-link">Rotation admin</a>
-        <a href="../recipes" class="btn-ghost admin-home-link">Recipes</a>
-        <a href="../" class="btn-ghost admin-home-link">Back to dinner</a>
       </div>
     </header>
 
@@ -222,6 +219,7 @@
   </section>
 
   <script src="../theme.js"></script>
+  <script src="../nav.js"></script>
   <script src="../admin-meals.js"></script>
 </body>
 </html>

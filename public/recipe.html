@@ -8,7 +8,7 @@
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../style.css">
 </head>
-<body>
+<body data-nav-page="recipes" data-nav-root="..">
   <div id="app" class="admin-app recipe-detail-page">
     <header class="admin-header">
       <div>
@@ -17,8 +17,6 @@
       </div>
       <div class="admin-header-actions">
         <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
-        <a href="../recipes" class="btn-ghost admin-home-link">Back to recipes</a>
-        <a href="../" class="btn-ghost admin-home-link">Dinner</a>
       </div>
     </header>
 
@@ -55,6 +53,7 @@
   </div>
 
   <script src="../theme.js"></script>
+  <script src="../nav.js"></script>
   <script src="../recipe.js"></script>
 </body>
 </html>

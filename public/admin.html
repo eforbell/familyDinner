@@ -8,17 +8,15 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-nav-page="planner" data-nav-root=".">
   <div id="app" class="admin-app">
     <header class="admin-header">
       <div>
-        <div class="week-badge">Rotation Admin</div>
+        <div class="week-badge">Planner</div>
         <h1>3-Week Dinner Plan</h1>
       </div>
       <div class="admin-header-actions">
         <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
-        <a href="admin/meals" class="btn-ghost admin-home-link">Meal admin</a>
-        <a href="./" class="btn-ghost admin-home-link">Back to dinner</a>
       </div>
     </header>
 
@@ -32,6 +30,7 @@
   </div>
 
   <script src="theme.js"></script>
+  <script src="nav.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

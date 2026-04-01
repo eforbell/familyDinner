@@ -15,7 +15,7 @@
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-nav-page="week" data-nav-root=".">
 
   <!-- Member picker (first visit) -->
   <div id="member-overlay" class="overlay hidden">
@@ -63,10 +63,6 @@
           <div id="tonight-meta" class="tonight-meta"></div>
           <div id="tonight-notes" class="tonight-notes"></div>
 
-          <div class="hero-quick-links">
-            <a class="btn-ghost" href="tonight">Open full tonight view</a>
-          </div>
-
           <div class="tonight-actions">
             <button id="tonight-details-btn" class="btn-ghost" onclick="toggleTonightDetails()">
               Details ▾
@@ -100,15 +96,10 @@
       <div id="week-grid" class="week-grid"></div>
     </section>
 
-    <section class="admin-entry">
-      <a href="recipes" class="btn-ghost admin-link">Browse recipes</a>
-      <a href="admin" class="btn-ghost admin-link">Edit repeating 3-week plan</a>
-      <a href="admin/meals" class="btn-ghost admin-link">Manage meal library</a>
-    </section>
-
   </div>
 
   <script src="theme.js"></script>
+  <script src="nav.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
