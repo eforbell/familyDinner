@@ -1136,7 +1136,8 @@ app.get('/tonight', async (req, res) => {
 	  <meta name="theme-color" content="#0f0f0f">
 	  <title>Tonight's Dinner 🍽️</title>
 	  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <meta property="og:title" content="Tonight's Dinner">
+	  <link rel="stylesheet" href="/style.css">
+	  <meta property="og:title" content="Tonight's Dinner">
 	  <meta property="og:description" content="${safeOgDescription}">
   <meta property="og:image" content="/og-image.svg">
   <meta property="og:type" content="website">
@@ -1165,14 +1166,14 @@ app.get('/tonight', async (req, res) => {
 	    body {
 	      background: var(--bg); color: var(--text);
 	      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	      min-height: 100dvh; display: flex; flex-direction: column;
-	      align-items: center; justify-content: center;
-	      text-align: center; padding: 2rem 1.5rem;
+	      min-height: 100dvh;
+	      text-align: center;
 	    }
-	    .theme-toggle {
-	      position: fixed; top: 1rem; right: 1rem;
-	      background: transparent; border: 1px solid var(--border); border-radius: 999px;
-	      color: var(--text); cursor: pointer; font: inherit; min-width: 42px; padding: .5rem .75rem;
+	    .tonight-route-shell {
+	      margin: 0 auto;
+	      max-width: 780px;
+	      padding: 2rem 1.5rem 6rem;
+	      width: 100%;
 	    }
 	    .day   { font-size: 1rem; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1rem; }
 	    .label { font-size: .85rem; color: var(--accent); letter-spacing: .2em; text-transform: uppercase; margin-bottom: .5rem; }
@@ -1207,8 +1208,8 @@ app.get('/tonight', async (req, res) => {
 	    .recipe-link { display: inline-block; margin-top: .9rem; color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(249,115,22,.35); padding-bottom: 1px; }
 		  </style>
 		</head>
-		<body>
-	  <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+		<body data-nav-page="tonight" data-nav-root=".">
+	  <div id="app" class="tonight-route-shell">
 	  <div class="day">${safeDayName}</div>
 	  <div class="label">Tonight's Dinner</div>
 
@@ -1237,9 +1238,11 @@ app.get('/tonight', async (req, res) => {
   </div>
   ` : ''}
 
-  <a href="./" class="week-link">see the full week →</a>
+	  <a href="./" class="week-link">see the full week →</a>
+	  </div>
 
 	  <script src="/theme.js"></script>
+	  <script src="/nav.js"></script>
 	  ${(isOrderIn || canVoteMeal) ? `
 	  <script>
     const DATE = '${dateStr}';
