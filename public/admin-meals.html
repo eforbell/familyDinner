@@ -16,7 +16,9 @@
         <h1>Meal Library</h1>
       </div>
       <div class="admin-header-actions">
+        <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
         <a href="../admin" class="btn-ghost admin-home-link">Rotation admin</a>
+        <a href="../recipes" class="btn-ghost admin-home-link">Recipes</a>
         <a href="../" class="btn-ghost admin-home-link">Back to dinner</a>
       </div>
     </header>
@@ -128,10 +130,17 @@
         </div>
 
         <form id="meal-form" class="meal-form">
+          <input name="recipe_id" type="hidden">
+
           <label class="form-field">
             <span>Name</span>
             <input name="name" type="text" required>
           </label>
+
+          <div id="linked-recipe-row" class="linked-recipe-row hidden">
+            <span class="muted">Linked recipe</span>
+            <a id="linked-recipe-link" class="btn-ghost" href="../recipes">Open recipe</a>
+          </div>
 
           <div class="meal-form-grid">
             <label class="form-field">
@@ -212,6 +221,7 @@
     <pre id="print-grocery-body"></pre>
   </section>
 
+  <script src="../theme.js"></script>
   <script src="../admin-meals.js"></script>
 </body>
 </html>

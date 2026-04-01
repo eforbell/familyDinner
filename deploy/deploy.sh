@@ -1,86 +1,102 @@
 #!/usr/bin/env bash
+# deploy.sh — smart git-based deploy for familyDinner
+# Usage:
+#   ./deploy.sh                   # deploy origin/main
+#   ./deploy.sh feat/my-branch    # deploy a specific branch
+#   ./deploy.sh --restore-stash   # restore last auto-stashed local changes
+#   FORCE_DEPLOY=1 ./deploy.sh    # skip dirty-check (not recommended)
+# Env:
+#   AUTO_STASH=1                  # default; auto-stash dirty tree before deploy
+#   AUTO_STASH=0                  # fail instead of auto-stashing
+
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/home/forbell/familyDinner}"
-SERVICE_NAME="${SERVICE_NAME:-family-dinner}"
-DEFAULT_REMOTE="${DEPLOY_REMOTE:-origin}"
-FORCE_DEPLOY="${FORCE_DEPLOY:-0}"
+APP_DIR="${APP_DIR:-/data/apps/familyDinner}"
+SERVICE="${SERVICE_NAME:-family-dinner}"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-usage() {
-  cat <<EOF
-Usage:
-  $(basename "$0") [<ref>]
-  $(basename "$0") [<remote> <branch>]
+REF="${1:-origin/main}"
 
-Examples:
-  $(basename "$0")
-  $(basename "$0") origin/main
-  $(basename "$0") feat/subpath-support
-  $(basename "$0") origin feat/subpath-support
-EOF
+if [[ -d "$APP_DIR/.git" ]]; then
+  GIT_CMD=(git -C "$APP_DIR")
+  STASH_REF_FILE="$APP_DIR/.deploy-last-stash-ref"
+  MODE="repo"
+else
+  GIT_CMD=(git --git-dir="$REPO_DIR/.git" --work-tree="$APP_DIR")
+  STASH_REF_FILE="$REPO_DIR/.deploy-last-stash-ref"
+  MODE="worktree"
+fi
+
+restore_stash() {
+  local stash_ref="${1:-}"
+  if [[ -z "$stash_ref" ]]; then
+    if [[ -f "$STASH_REF_FILE" ]]; then
+      stash_ref="$(cat "$STASH_REF_FILE")"
+    else
+      echo "ERROR: No saved stash ref found."
+      exit 1
+    fi
+  fi
+
+  echo "==> Restoring stash: $stash_ref"
+  "${GIT_CMD[@]}" stash pop "$stash_ref"
+  rm -f "$STASH_REF_FILE"
+  echo "==> Local changes restored."
 }
 
-if [[ ! -d "$APP_DIR/.git" ]]; then
-  echo "Expected a git checkout at $APP_DIR" >&2
-  exit 1
+if [[ "$REF" == "--restore-stash" ]]; then
+  restore_stash "${2:-}"
+  exit 0
 fi
 
-case "$#" in
-  0)
-    FETCH_REMOTE="$DEFAULT_REMOTE"
-    TARGET_REF="refs/remotes/$DEFAULT_REMOTE/main"
-    DISPLAY_TARGET="$DEFAULT_REMOTE/main"
-    ;;
-  1)
-    ARG="$1"
-    FETCH_REMOTE="$DEFAULT_REMOTE"
-    TARGET_REF=""
-    DISPLAY_TARGET="$ARG"
-    ;;
-  2)
-    FETCH_REMOTE="$1"
-    TARGET_REF="refs/remotes/$FETCH_REMOTE/$2"
-    DISPLAY_TARGET="$FETCH_REMOTE/$2"
-    ;;
-  *)
-    usage >&2
-    exit 1
-    ;;
-esac
+echo "==> familyDinner deploy: $REF"
 
-echo "Deploying $DISPLAY_TARGET in $APP_DIR"
+AUTO_STASH="${AUTO_STASH:-1}"
 
-cd "$APP_DIR"
-
-git fetch "$FETCH_REMOTE" --prune
-
-if [[ "$FORCE_DEPLOY" != "1" ]] && [[ -n "$(git status --porcelain)" ]]; then
-  echo "Refusing to deploy over local changes in $APP_DIR" >&2
-  echo "Commit, stash, or rerun with FORCE_DEPLOY=1 if you really want to replace them." >&2
-  exit 1
-fi
-
-if [[ -z "${TARGET_REF:-}" ]]; then
-  if git rev-parse --verify --quiet "refs/remotes/$ARG" >/dev/null; then
-    TARGET_REF="refs/remotes/$ARG"
-  elif git rev-parse --verify --quiet "refs/remotes/$DEFAULT_REMOTE/$ARG" >/dev/null; then
-    TARGET_REF="refs/remotes/$DEFAULT_REMOTE/$ARG"
-    DISPLAY_TARGET="$DEFAULT_REMOTE/$ARG"
-  elif git rev-parse --verify --quiet "$ARG" >/dev/null; then
-    TARGET_REF="$ARG"
-  else
-    echo "Could not resolve deployment target '$ARG'." >&2
-    echo "Tried remote branch '$DEFAULT_REMOTE/$ARG' and local ref '$ARG'." >&2
-    exit 1
+if [[ -z "${FORCE_DEPLOY:-}" ]]; then
+  if [[ -n "$("${GIT_CMD[@]}" status --porcelain)" ]]; then
+    if [[ "$AUTO_STASH" == "1" ]]; then
+      stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      stash_msg="deploy:auto-stash:${stamp}:${REF}"
+      echo "==> Local changes detected; auto-stashing before deploy"
+      "${GIT_CMD[@]}" stash push --include-untracked -m "$stash_msg" >/dev/null
+      stash_ref="$("${GIT_CMD[@]}" rev-parse -q --verify refs/stash || true)"
+      if [[ -n "$stash_ref" ]]; then
+        echo "$stash_ref" > "$STASH_REF_FILE"
+        echo "==> Saved stash ref: $stash_ref"
+        echo "==> Restore later with: ./deploy/deploy.sh --restore-stash"
+      fi
+    else
+      echo "ERROR: Uncommitted local changes. Commit/stash first, or set AUTO_STASH=1."
+      exit 1
+    fi
   fi
-elif ! git rev-parse --verify --quiet "$TARGET_REF" >/dev/null; then
-  echo "Could not resolve deployment target '$DISPLAY_TARGET'." >&2
-  exit 1
 fi
 
-git switch --detach "$TARGET_REF"
+"${GIT_CMD[@]}" fetch origin --prune
 
-echo "Deploying commit $(git rev-parse --short HEAD) from $DISPLAY_TARGET"
+TARGET="$REF"
+if [[ "$REF" != origin/* ]] && "${GIT_CMD[@]}" show-ref --verify --quiet "refs/remotes/origin/$REF"; then
+  TARGET="origin/$REF"
+fi
+
+echo "==> Updating work tree to $TARGET"
+if [[ "$MODE" == "repo" ]]; then
+  "${GIT_CMD[@]}" checkout -B deploy-current "$TARGET"
+  "${GIT_CMD[@]}" reset --hard "$TARGET"
+else
+  "${GIT_CMD[@]}" checkout "$TARGET" -- .
+fi
+
+echo "==> Installing production dependencies"
+cd "$APP_DIR"
 npm ci --omit=dev
-sudo systemctl restart "$SERVICE_NAME"
-sudo systemctl --no-pager --full status "$SERVICE_NAME"
+
+echo "==> Running database migrations"
+npm run db:migrate
+
+echo "==> Restarting $SERVICE"
+sudo systemctl restart "$SERVICE"
+sudo systemctl status "$SERVICE" --no-pager -l
+
+echo "==> Done."

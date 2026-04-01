@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "db:migrate": "node db/migrate.js",
+    "db:seed": "sh -c 'set -a; [ -f ./.env ] && . ./.env; set +a; psql \"$DATABASE_URL\" -f db/seed.sql'",
     "test": "node --test"
   },
   "dependencies": {

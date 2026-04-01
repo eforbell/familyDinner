@@ -107,6 +107,7 @@ async function selectMeal(mealId) {
 function fillForm(meal) {
   const form = document.getElementById('meal-form');
   form.elements.name.value = meal.name || '';
+  form.elements.recipe_id.value = meal.recipe_id || '';
   form.elements.notes.value = meal.notes || '';
   form.elements.recipe_tips.value = meal.recipe_tips || '';
   form.elements.active_time_min.value = meal.active_time_min ?? '';
@@ -117,12 +118,19 @@ function fillForm(meal) {
   form.elements.tags.value = (meal.tags || []).join(', ');
   form.elements.is_new.checked = Boolean(meal.is_new);
   form.elements.is_protected.checked = Boolean(meal.is_protected);
+  const linkedRecipeRow = document.getElementById('linked-recipe-row');
+  const linkedRecipeLink = document.getElementById('linked-recipe-link');
+  const hasRecipe = Boolean(meal.recipe_id);
+  linkedRecipeRow.classList.toggle('hidden', !hasRecipe);
+  if (hasRecipe) linkedRecipeLink.href = `../recipes/${meal.recipe_id}`;
 }
 
 function resetForm() {
   selectedMealId = null;
   lastMagicDraft = null;
   document.getElementById('meal-form').reset();
+  document.getElementById('meal-form').elements.recipe_id.value = '';
+  document.getElementById('linked-recipe-row').classList.add('hidden');
   hideMagicResult();
   updateEditorState();
   renderMealList();
@@ -141,6 +149,7 @@ async function saveMeal(event) {
   const form = event.target;
   const payload = {
     name: form.elements.name.value,
+    recipe_id: form.elements.recipe_id.value,
     notes: form.elements.notes.value,
     recipe_tips: form.elements.recipe_tips.value,
     active_time_min: form.elements.active_time_min.value,

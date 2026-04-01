@@ -1,9 +1,36 @@
--- Family Dinner App — Database Schema
--- Run: psql -U forbell -d family_dinner -h localhost -f db/schema.sql
--- (DATABASE_URL in .env is only loaded by Node, not your shell)
+-- Family members with preference flags
+CREATE TABLE IF NOT EXISTS family_members (
+  id              SERIAL PRIMARY KEY,
+  name            TEXT NOT NULL,
+  role            TEXT CHECK (role IN ('parent', 'kid')),
+  is_picky        BOOLEAN DEFAULT false,
+  hates_leftovers BOOLEAN DEFAULT false,
+  avatar_emoji    TEXT DEFAULT '👤'
+);
+
+-- Canonical recipe library
+CREATE TABLE IF NOT EXISTS recipes (
+  id                 SERIAL PRIMARY KEY,
+  title              TEXT NOT NULL,
+  description        TEXT,
+  source_url         TEXT,
+  source_domain      TEXT,
+  source_title       TEXT,
+  servings_text      TEXT,
+  prep_time_min      INTEGER,
+  cook_time_min      INTEGER,
+  total_time_min     INTEGER,
+  notes              TEXT,
+  tags               TEXT[] DEFAULT ARRAY[]::text[],
+  image_url          TEXT,
+  created_by_member_id INTEGER REFERENCES family_members(id),
+  created_at         TIMESTAMPTZ DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS meals (
   id              SERIAL PRIMARY KEY,
+  recipe_id       INTEGER REFERENCES recipes(id),
   name            TEXT NOT NULL,
   notes           TEXT,           -- short context note from the rotation doc
   recipe_tips     TEXT,           -- detailed prep tips (from "New Meals" section)
@@ -15,6 +42,39 @@ CREATE TABLE IF NOT EXISTS meals (
   is_new          BOOLEAN DEFAULT false,
   is_protected    BOOLEAN DEFAULT false,  -- Thursday "order in" nights
   tags            TEXT[],
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
+  id              SERIAL PRIMARY KEY,
+  recipe_id       INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  position        INTEGER NOT NULL,
+  display_text    TEXT NOT NULL,
+  quantity_text   TEXT,
+  unit_text       TEXT,
+  ingredient_text TEXT,
+  prep_note       TEXT,
+  UNIQUE(recipe_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS recipe_steps (
+  id               SERIAL PRIMARY KEY,
+  recipe_id        INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  position         INTEGER NOT NULL,
+  title            TEXT,
+  instruction_text TEXT NOT NULL,
+  UNIQUE(recipe_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS recipe_imports (
+  id              SERIAL PRIMARY KEY,
+  recipe_id       INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
+  source_url      TEXT NOT NULL,
+  fetch_status    TEXT NOT NULL,
+  extractor_model TEXT,
+  raw_text_excerpt TEXT,
+  extracted_json  JSONB,
+  error_message   TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -37,16 +97,6 @@ CREATE TABLE IF NOT EXISTS daily_overrides (
   created_by       TEXT,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Family members with preference flags
-CREATE TABLE IF NOT EXISTS family_members (
-  id              SERIAL PRIMARY KEY,
-  name            TEXT NOT NULL,
-  role            TEXT CHECK (role IN ('parent', 'kid')),
-  is_picky        BOOLEAN DEFAULT false,
-  hates_leftovers BOOLEAN DEFAULT false,
-  avatar_emoji    TEXT DEFAULT '👤'
 );
 
 -- Reactions per meal per person per planned date

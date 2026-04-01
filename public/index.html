@@ -46,7 +46,10 @@
     <header>
       <span id="week-badge" class="week-badge"></span>
       <h1>🍽️ Dinner</h1>
-      <button id="who-btn" class="who-btn" onclick="openMemberPicker()" title="Change who you are"></button>
+      <div class="header-actions">
+        <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+        <button id="who-btn" class="who-btn" onclick="openMemberPicker()" title="Change who you are"></button>
+      </div>
     </header>
 
     <!-- TONIGHT hero -->
@@ -60,10 +63,15 @@
           <div id="tonight-meta" class="tonight-meta"></div>
           <div id="tonight-notes" class="tonight-notes"></div>
 
+          <div class="hero-quick-links">
+            <a class="btn-ghost" href="tonight">Open full tonight view</a>
+          </div>
+
           <div class="tonight-actions">
             <button id="tonight-details-btn" class="btn-ghost" onclick="toggleTonightDetails()">
               Details ▾
             </button>
+            <a id="tonight-recipe-link" class="btn-ghost hidden" href="#">Open recipe</a>
             <button class="btn-swap" onclick="openSwap(todayDate, 'tonight')">
               Swap ⇄
             </button>
@@ -93,12 +101,14 @@
     </section>
 
     <section class="admin-entry">
+      <a href="recipes" class="btn-ghost admin-link">Browse recipes</a>
       <a href="admin" class="btn-ghost admin-link">Edit repeating 3-week plan</a>
       <a href="admin/meals" class="btn-ghost admin-link">Manage meal library</a>
     </section>
 
   </div>
 
+  <script src="theme.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Recipe</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <div id="app" class="admin-app recipe-detail-page">
+    <header class="admin-header">
+      <div>
+        <div class="week-badge">Cook View</div>
+        <h1 id="recipe-detail-title">Recipe</h1>
+      </div>
+      <div class="admin-header-actions">
+        <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+        <a href="../recipes" class="btn-ghost admin-home-link">Back to recipes</a>
+        <a href="../" class="btn-ghost admin-home-link">Dinner</a>
+      </div>
+    </header>
+
+    <section class="admin-intro">
+      <p id="recipe-detail-description" class="admin-copy"></p>
+      <p id="recipe-detail-status" class="admin-status hidden"></p>
+    </section>
+
+    <section class="recipe-detail-shell">
+      <div class="recipe-detail-meta" id="recipe-detail-meta"></div>
+      <div class="meal-form-actions">
+        <a id="recipe-detail-edit" class="btn-ghost" href="#">Edit recipe</a>
+        <button id="recipe-detail-create-meal" class="btn-ghost hidden" type="button">Create meal</button>
+        <a id="recipe-detail-meal-link" class="btn-ghost hidden" href="#">Open linked meal</a>
+      </div>
+
+      <div class="recipe-detail-grid">
+        <section class="recipe-card">
+          <h2>Ingredients</h2>
+          <ul id="recipe-detail-ingredients" class="recipe-bullet-list"></ul>
+        </section>
+
+        <section class="recipe-card">
+          <h2>Steps</h2>
+          <ol id="recipe-detail-steps" class="recipe-step-list"></ol>
+        </section>
+      </div>
+
+      <section class="recipe-card hidden" id="recipe-detail-notes-card">
+        <h2>Cook notes</h2>
+        <p id="recipe-detail-notes" class="detail-tips"></p>
+      </section>
+    </section>
+  </div>
+
+  <script src="../theme.js"></script>
+  <script src="../recipe.js"></script>
+</body>
+</html>

@@ -5,8 +5,17 @@
 -- ============================================================
 -- MEALS (master catalog, 17 entries)
 -- ============================================================
-TRUNCATE meal_rotation, daily_overrides, meal_votes, cook_log, val_energy RESTART IDENTITY CASCADE;
-TRUNCATE meals, family_members RESTART IDENTITY CASCADE;
+TRUNCATE meal_rotation, daily_overrides, meal_votes, cook_log, val_energy, recipe_imports, recipe_steps, recipe_ingredients RESTART IDENTITY CASCADE;
+TRUNCATE meals, recipes, family_members RESTART IDENTITY CASCADE;
+
+-- ============================================================
+-- FAMILY MEMBERS
+-- ============================================================
+INSERT INTO family_members (name, role, is_picky, hates_leftovers, avatar_emoji) VALUES
+('Eric',      'parent', false, false, '👨‍🍳'),
+('Alex',       'parent', false, false, '👩‍🍳'),
+('Jordan',  'kid', false, true,  '🧑'),
+('Casey', 'kid', true,  false, '👧');
 
 INSERT INTO meals (name, notes, recipe_tips, active_time_min, total_time_min, equipment, cook, kid_rating, is_new, is_protected, tags) VALUES
 
@@ -151,15 +160,50 @@ INSERT INTO meal_rotation (week_number, day_of_week, meal_id) VALUES
 (3, 6, 16), -- Sat: Elevated Ramen Night ★
 (3, 7, 17); -- Sun: Gyoza Night + Fried Rice ★
 
+-- ============================================================
+-- RECIPES
+-- ============================================================
+INSERT INTO recipes (title, description, source_title, servings_text, prep_time_min, cook_time_min, total_time_min, notes, tags, created_by_member_id) VALUES
+('Sheet Pan Chicken Fajitas',
+ 'Easy weeknight fajitas with peppers and onions roasted together.',
+ 'Family Dinner Seed',
+ '4 servings',
+ 15, 30, 45,
+ 'Warm tortillas right before serving and let everyone build their own plate.',
+ ARRAY['chicken', 'tex-mex', 'sheet-pan', 'taco-bar'],
+ 2),
+('Teriyaki Chicken Bowls',
+ 'Sweet-savory chicken bowls with rice and simple vegetables.',
+ 'Family Dinner Seed',
+ '4 servings',
+ 10, 20, 30,
+ 'Use bottled teriyaki sauce if the week is hectic.',
+ ARRAY['chicken', 'asian', 'bowls', 'crowd-pleaser'],
+ 1);
 
--- ============================================================
--- FAMILY MEMBERS
--- ============================================================
-INSERT INTO family_members (name, role, is_picky, hates_leftovers, avatar_emoji) VALUES
-('Eric',      'parent', false, false, '👨‍🍳'),
-('Alex',       'parent', false, false, '👩‍🍳'),
-('Jordan',  'kid', false, true,  '🧑'),
-('Casey', 'kid', true,  false, '👧');
+INSERT INTO recipe_ingredients (recipe_id, position, display_text, quantity_text, unit_text, ingredient_text, prep_note) VALUES
+(1, 1, '1.5 lb chicken thighs, thinly sliced', '1.5', 'lb', 'chicken thighs', 'thinly sliced'),
+(1, 2, '3 bell peppers, sliced', '3', null, 'bell peppers', 'sliced'),
+(1, 3, '1 large onion, sliced', '1', 'large', 'onion', 'sliced'),
+(1, 4, '2 tbsp olive oil', '2', 'tbsp', 'olive oil', null),
+(1, 5, '2 tsp chili powder', '2', 'tsp', 'chili powder', null),
+(1, 6, 'Flour tortillas for serving', null, null, 'flour tortillas', 'for serving'),
+(2, 1, '1.5 lb chicken thighs', '1.5', 'lb', 'chicken thighs', null),
+(2, 2, '1 cup teriyaki sauce', '1', 'cup', 'teriyaki sauce', null),
+(2, 3, '4 cups cooked rice', '4', 'cups', 'cooked rice', null),
+(2, 4, '2 cups broccoli or edamame', '2', 'cups', 'broccoli or edamame', null);
+
+INSERT INTO recipe_steps (recipe_id, position, instruction_text) VALUES
+(1, 1, 'Heat the oven to 425°F and line a sheet pan for easy cleanup.'),
+(1, 2, 'Toss chicken, peppers, and onions with oil and seasonings until evenly coated.'),
+(1, 3, 'Spread everything on the pan and roast until the chicken is cooked through and the vegetables are lightly charred.'),
+(1, 4, 'Warm tortillas and serve fajita filling with toppings at the table.'),
+(2, 1, 'Cook the chicken in a skillet or oven until nearly done.'),
+(2, 2, 'Add teriyaki sauce and simmer until glossy and the chicken is fully cooked.'),
+(2, 3, 'Build bowls with rice, vegetables, and teriyaki chicken.');
+
+UPDATE meals SET recipe_id = 1 WHERE name = 'Sheet Pan Chicken Fajitas';
+UPDATE meals SET recipe_id = 2 WHERE name = 'Teriyaki Chicken Bowls';
 
 
 -- ============================================================
@@ -180,4 +224,10 @@ INSERT INTO restaurants (name, emoji) VALUES
 -- Adjust this date to whatever Monday you want Week 1 to start on.
 INSERT INTO app_config (key, value)
 VALUES ('rotation_start_date', '2026-02-23')  -- Monday Feb 23, 2026 = Week 1
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO app_config (key, value)
+VALUES
+  ('magic_recipe_import_prompt', 'Extract a clean family-friendly recipe from the source. Remove story text, preserve useful details, normalize ingredients and steps, and keep the result practical for home cooking.'),
+  ('magic_recipe_detail_prompt', 'When the source instructions are terse, expand them into clear, home-cook-friendly steps without inventing unsupported ingredients or major recipe changes.')
 ON CONFLICT (key) DO NOTHING;
