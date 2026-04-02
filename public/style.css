@@ -1074,6 +1074,21 @@ body.app-has-nav .recipe-detail-page .admin-header {
   overflow: auto;
 }
 
+.recipe-browser-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.recipe-browser-head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.recipe-browser-list {
+  max-height: none;
+  overflow: visible;
+}
+
 .cook-history-panel {
   border-top: 1px solid var(--border);
   display: grid;
@@ -1373,6 +1388,10 @@ body.app-has-nav .recipe-detail-page .admin-header {
   .meal-admin-layout {
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
     align-items: start;
+  }
+
+  .meal-admin-layout.recipe-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .cook-history-filters {

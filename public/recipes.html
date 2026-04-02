@@ -27,35 +27,13 @@
     </section>
 
     <section class="meal-admin-layout recipe-layout">
-      <aside class="meal-library-panel">
-        <div class="meal-library-head">
-          <div>
-            <h2>Browse recipes</h2>
-            <p class="muted">Search, tap, and cook.</p>
-          </div>
-          <a class="btn-primary" href="admin/recipes">Open builder</a>
+      <section class="meal-library-panel recipe-browser-panel">
+        <div class="recipe-browser-head">
+          <h2>Browse recipes</h2>
+          <p class="muted">Search, tap, and cook.</p>
         </div>
         <input id="recipe-search" class="meal-search" type="search" placeholder="Search recipes">
-        <div id="recipe-list" class="meal-list"></div>
-      </aside>
-
-      <section class="meal-editor-panel">
-        <section class="recipe-card">
-          <h2>Cook-view first</h2>
-          <p class="muted">Selecting a recipe now opens the full cook-view so the cook can read ingredients and steps right away without hunting for another button.</p>
-          <div class="meal-form-actions">
-            <a class="btn-ghost" href="admin/recipes">Need to edit or import?</a>
-          </div>
-        </section>
-
-        <section class="recipe-card">
-          <h2>What moved?</h2>
-          <ul class="recipe-bullet-list">
-            <li>Import from URL now lives in Recipe Builder.</li>
-            <li>Recipe editing and meal-linking live in Recipe Builder.</li>
-            <li>The Recipes page is now focused on browsing and opening cook-view.</li>
-          </ul>
-        </section>
+        <div id="recipe-list" class="meal-list recipe-browser-list"></div>
       </section>
     </section>
   </div>
