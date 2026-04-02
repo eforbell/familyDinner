@@ -79,6 +79,57 @@ function parseTextList(value) {
     .filter(Boolean);
 }
 
+function normalizeRestaurantKey(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function dedupeRestaurants(restaurants) {
+  const deduped = new Map();
+
+  for (const restaurant of restaurants) {
+    const key = normalizeRestaurantKey(restaurant.name);
+    if (!key || deduped.has(key)) continue;
+    deduped.set(key, restaurant);
+  }
+
+  return [...deduped.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function mergeRestaurantVoteRows(rows) {
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const key = normalizeRestaurantKey(row.name);
+    if (!key) continue;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        id: row.id,
+        name: row.name,
+        emoji: row.emoji,
+        count: 0,
+        voters: new Set(),
+      });
+    }
+
+    const entry = grouped.get(key);
+    entry.count += Number(row.count || 0);
+    for (const voter of row.voters || []) {
+      if (voter) entry.voters.add(voter);
+    }
+  }
+
+  return [...grouped.values()]
+    .map(entry => ({
+      id: entry.id,
+      name: entry.name,
+      emoji: entry.emoji,
+      count: entry.count,
+      voters: [...entry.voters],
+    }))
+    .sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+}
+
 function buildOrderInVotes(restaurants) {
   return restaurants.map(restaurant => ({
     id: restaurant.id,
@@ -244,9 +295,9 @@ async function setAppConfigValue(key, value) {
 
 async function getActiveRestaurants() {
   const { rows } = await pool.query(
-    'SELECT id, name, emoji, active FROM restaurants WHERE active = true ORDER BY name'
+    'SELECT id, name, emoji, active FROM restaurants WHERE active = true ORDER BY lower(name), id'
   );
-  return rows;
+  return dedupeRestaurants(rows);
 }
 
 async function getMagicMealSettings() {
@@ -1081,7 +1132,7 @@ async function orderInForDate(dateStr) {
   );
   if (!rows.length) return null;
 
-  const { rows: votes } = await pool.query(
+  const { rows: voteRows } = await pool.query(
     `SELECT r.id, r.name, r.emoji,
             COUNT(rv.id)::int AS count,
             COALESCE(ARRAY_AGG(f.name) FILTER (WHERE f.name IS NOT NULL), '{}') AS voters
@@ -1090,10 +1141,10 @@ async function orderInForDate(dateStr) {
      LEFT JOIN family_members f ON f.id = rv.member_id
      WHERE r.active = true
      GROUP BY r.id, r.name, r.emoji
-     ORDER BY count DESC, r.name`,
+     ORDER BY lower(r.name), r.id`,
     [dateStr]
   );
-  return { ...rows[0], votes };
+  return { ...rows[0], votes: mergeRestaurantVoteRows(voteRows) };
 }
 
 async function weekDataForDate(date) {
@@ -1157,16 +1208,26 @@ async function weekDataForDate(date) {
         order_date: dateStr,
         created_by: row.created_by,
         created_at: row.created_at,
-        votes: [],
+        vote_rows: [],
       });
     }
 
-    orderInByDate.get(dateStr).votes.push({
+    orderInByDate.get(dateStr).vote_rows.push({
       id: row.id,
       name: row.name,
       emoji: row.emoji,
       count: row.count,
       voters: row.voters,
+    });
+  }
+
+  for (const [dateStr, orderIn] of orderInByDate.entries()) {
+    orderInByDate.set(dateStr, {
+      id: orderIn.id,
+      order_date: orderIn.order_date,
+      created_by: orderIn.created_by,
+      created_at: orderIn.created_at,
+      votes: mergeRestaurantVoteRows(orderIn.vote_rows),
     });
   }
 
@@ -2295,10 +2356,13 @@ module.exports = {
   app,
   buildDefaultOrderIn,
   buildOrderInVotes,
+  dedupeRestaurants,
   escapeHtml,
   localDateString,
   mealVoteWeekContext,
+  mergeRestaurantVoteRows,
   mondayOf,
+  normalizeRestaurantKey,
   parseDateOnly,
   parseRestaurantOptionsInput,
   renderRecipeDetailPage,

@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
   buildDefaultOrderIn,
+  dedupeRestaurants,
   escapeHtml,
+  mergeRestaurantVoteRows,
   parseRestaurantOptionsInput,
   renderRecipeDetailPage,
   resolveDayOrderIn,
@@ -83,4 +85,30 @@ test('restaurant option settings parse and serialize simple planner input', () =
     serializeRestaurantOptions(parsed),
     "🌯 Chipotle\nPizza\n🍟 McDonald's"
   );
+});
+
+test('dedupeRestaurants keeps one active restaurant per normalized name', () => {
+  const deduped = dedupeRestaurants([
+    { id: 5, name: 'Chipotle', emoji: '🌯' },
+    { id: 1, name: 'Chipotle', emoji: '🌯' },
+    { id: 2, name: 'Pizza', emoji: '🍕' },
+  ]);
+
+  assert.deepEqual(deduped, [
+    { id: 5, name: 'Chipotle', emoji: '🌯' },
+    { id: 2, name: 'Pizza', emoji: '🍕' },
+  ]);
+});
+
+test('mergeRestaurantVoteRows combines duplicate active restaurant rows by name', () => {
+  const merged = mergeRestaurantVoteRows([
+    { id: 1, name: 'Chipotle', emoji: '🌯', count: 1, voters: ['Eric'] },
+    { id: 5, name: 'Chipotle', emoji: '🌯', count: 2, voters: ['Alex', 'Jordan'] },
+    { id: 2, name: 'Pizza', emoji: '🍕', count: 0, voters: [] },
+  ]);
+
+  assert.deepEqual(merged, [
+    { id: 1, name: 'Chipotle', emoji: '🌯', count: 3, voters: ['Eric', 'Alex', 'Jordan'] },
+    { id: 2, name: 'Pizza', emoji: '🍕', count: 0, voters: [] },
+  ]);
 });
