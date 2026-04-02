@@ -26,6 +26,24 @@
       <p id="rotation-status" class="admin-status hidden"></p>
     </section>
 
+    <section class="planner-settings">
+      <div class="planner-settings-card">
+        <div class="planner-settings-head">
+          <div>
+            <h2>Order-in options</h2>
+            <p class="muted">One option per line. Put an emoji first if you want it shown in the vote.</p>
+          </div>
+          <button id="save-restaurants-btn" class="btn-ghost" type="button">Save options</button>
+        </div>
+        <textarea
+          id="restaurant-options"
+          class="planner-settings-textarea"
+          rows="6"
+          placeholder="🌯 Chipotle&#10;🥡 Panda Express&#10;🍕 Pizza"
+        ></textarea>
+      </div>
+    </section>
+
     <section id="rotation-grid" class="rotation-grid"></section>
   </div>
 

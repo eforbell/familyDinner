@@ -79,6 +79,63 @@ function parseTextList(value) {
     .filter(Boolean);
 }
 
+function buildOrderInVotes(restaurants) {
+  return restaurants.map(restaurant => ({
+    id: restaurant.id,
+    name: restaurant.name,
+    emoji: restaurant.emoji,
+    count: 0,
+    voters: [],
+  }));
+}
+
+function buildDefaultOrderIn(dateStr, restaurants) {
+  return {
+    id: null,
+    order_date: dateStr,
+    created_by: null,
+    created_at: null,
+    is_default: true,
+    votes: buildOrderInVotes(restaurants),
+  };
+}
+
+function resolveDayOrderIn(dateStr, meal, orderIn, restaurants) {
+  if (orderIn) return { ...orderIn, is_default: false };
+  if (meal && meal.is_protected) return buildDefaultOrderIn(dateStr, restaurants);
+  return null;
+}
+
+function serializeRestaurantOptions(restaurants) {
+  return restaurants
+    .map(restaurant => `${restaurant.emoji ? `${restaurant.emoji} ` : ''}${restaurant.name}`)
+    .join('\n');
+}
+
+function parseRestaurantOptionsInput(input) {
+  const seen = new Set();
+
+  return String(input || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const [firstToken, ...rest] = line.split(/\s+/);
+      const hasEmojiPrefix = rest.length > 0 && /[^\p{L}\p{N}'&().,-]/u.test(firstToken);
+      return {
+        emoji: hasEmojiPrefix ? firstToken : null,
+        name: hasEmojiPrefix ? rest.join(' ').trim() : line,
+      };
+    })
+    .filter(option => option.name)
+    .filter(option => {
+      const key = option.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 function normalizeMealPayload(body) {
   const activeTime = body.active_time_min === '' || body.active_time_min == null
     ? null
@@ -183,6 +240,13 @@ async function setAppConfigValue(key, value) {
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
     [key, value]
   );
+}
+
+async function getActiveRestaurants() {
+  const { rows } = await pool.query(
+    'SELECT id, name, emoji, active FROM restaurants WHERE active = true ORDER BY name'
+  );
+  return rows;
 }
 
 async function getMagicMealSettings() {
@@ -1044,7 +1108,7 @@ async function weekDataForDate(date) {
   const weekEnd   = localDateString(sunday);
   const rw        = await rotationWeek(now);
 
-  const [{ rows: rotationRows }, { rows: overrideRows }, { rows: orderInRows }] = await Promise.all([
+  const [{ rows: rotationRows }, { rows: overrideRows }, { rows: orderInRows }, restaurants] = await Promise.all([
     pool.query(
       `SELECT r.day_of_week, m.*, false AS is_override
        FROM meal_rotation r
@@ -1076,6 +1140,7 @@ async function weekDataForDate(date) {
        ORDER BY o.order_date, count DESC, r.name`,
       [weekStart, weekEnd]
     ),
+    getActiveRestaurants(),
   ]);
 
   const rotationByDay = new Map(rotationRows.map(row => [row.day_of_week, row]));
@@ -1111,13 +1176,15 @@ async function weekDataForDate(date) {
     day.setDate(monday.getDate() + i);
 
     const dateStr = localDateString(day);
+    const meal = overridesByDate.get(dateStr) || rotationByDay.get(i + 1) || null;
+    const orderIn = resolveDayOrderIn(dateStr, meal, orderInByDate.get(dateStr) || null, restaurants);
     days.push({
       date: dateStr,
       day_name: day.toLocaleDateString('en-US', { weekday: 'long' }),
       day_of_week: i + 1,
       is_today: dateStr === todayStr,
-      meal: overridesByDate.get(dateStr) || rotationByDay.get(i + 1) || null,
-      order_in: orderInByDate.get(dateStr) || null,
+      meal,
+      order_in: orderIn,
     });
   }
 
@@ -1641,7 +1708,7 @@ app.post('/api/meals', async (req, res) => {
 // GET /api/rotation — recurring 3-week plan plus meal catalog
 app.get('/api/rotation', async (req, res) => {
   try {
-    const [{ rows: slots }, { rows: meals }, { rows: config }] = await Promise.all([
+    const [{ rows: slots }, { rows: meals }, { rows: config }, restaurants] = await Promise.all([
       pool.query(
         `SELECT r.week_number, r.day_of_week, r.meal_id,
                 m.name, m.recipe_id, m.cook, m.kid_rating, m.is_protected, m.is_new
@@ -1657,6 +1724,7 @@ app.get('/api/rotation', async (req, res) => {
       pool.query(
         "SELECT value FROM app_config WHERE key = 'rotation_start_date'"
       ),
+      getActiveRestaurants(),
     ]);
 
     const weeks = [1, 2, 3].map(weekNumber => ({
@@ -1684,6 +1752,7 @@ app.get('/api/rotation', async (req, res) => {
       rotation_start_date: config[0] ? config[0].value : null,
       weeks,
       meals,
+      restaurants,
     });
   } catch (err) {
     console.error(err);
@@ -2057,9 +2126,58 @@ app.get('/api/energy', async (req, res) => {
 // GET /api/restaurants
 app.get('/api/restaurants', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM restaurants WHERE active = true ORDER BY name');
-    res.json(rows);
+    res.json(await getActiveRestaurants());
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/restaurants', async (req, res) => {
+  const restaurants = parseRestaurantOptionsInput(req.body.restaurant_options);
+  if (!restaurants.length) {
+    return res.status(400).json({ error: 'restaurant_options must include at least one option' });
+  }
+
+  try {
+    await pool.query('BEGIN');
+    await pool.query('UPDATE restaurants SET active = false WHERE active = true');
+
+    for (const restaurant of restaurants) {
+      const { rows: existingRows } = await pool.query(
+        `SELECT id
+         FROM restaurants
+         WHERE lower(name) = lower($1)
+         ORDER BY active DESC, id ASC
+         LIMIT 1`,
+        [restaurant.name]
+      );
+
+      if (existingRows.length) {
+        await pool.query(
+          `UPDATE restaurants
+           SET name = $2,
+               emoji = $3,
+               active = true
+           WHERE id = $1`,
+          [existingRows[0].id, restaurant.name, restaurant.emoji]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO restaurants (name, emoji, active)
+           VALUES ($1, $2, true)`,
+          [restaurant.name, restaurant.emoji]
+        );
+      }
+    }
+
+    await pool.query('COMMIT');
+    res.json({ success: true, restaurants: await getActiveRestaurants() });
+  } catch (err) {
+    try {
+      await pool.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Failed to rollback restaurant update', rollbackErr);
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -2099,13 +2217,29 @@ app.post('/api/order-in/:date/vote', async (req, res) => {
     return res.status(400).json({ error: 'restaurant_id and member_id required' });
   }
   try {
+    const dateStr = req.params.date;
+    const [existingOrderIn, meal] = await Promise.all([
+      orderInForDate(dateStr),
+      mealForDate(parseDateOnly(dateStr)),
+    ]);
+    const canVoteForOrderIn = !!(existingOrderIn || (meal && meal.is_protected));
+    if (!canVoteForOrderIn) {
+      return res.status(400).json({ error: 'order-in voting is not enabled for this date' });
+    }
+
+    await pool.query(
+      `INSERT INTO order_in_nights (order_date)
+       VALUES ($1)
+       ON CONFLICT (order_date) DO NOTHING`,
+      [dateStr]
+    );
     await pool.query(
       `INSERT INTO restaurant_votes (order_date, restaurant_id, member_id)
        VALUES ($1, $2, $3)
        ON CONFLICT (order_date, member_id) DO UPDATE SET restaurant_id = $2, created_at = NOW()`,
-      [req.params.date, restaurant_id, member_id]
+      [dateStr, restaurant_id, member_id]
     );
-    res.json({ success: true, order_in: await orderInForDate(req.params.date) });
+    res.json({ success: true, order_in: await orderInForDate(dateStr) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2159,11 +2293,16 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  buildDefaultOrderIn,
+  buildOrderInVotes,
   escapeHtml,
   localDateString,
   mealVoteWeekContext,
   mondayOf,
   parseDateOnly,
+  parseRestaurantOptionsInput,
   renderRecipeDetailPage,
+  resolveDayOrderIn,
   resolveMealVoteDate,
+  serializeRestaurantOptions,
 };

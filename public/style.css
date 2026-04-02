@@ -912,6 +912,43 @@ body.app-has-nav .recipe-detail-page .admin-header {
   padding: 0 1rem;
 }
 
+.planner-settings {
+  padding: 0 1rem 1rem;
+}
+
+.planner-settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.planner-settings-head {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.planner-settings-head h2 {
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
+}
+
+.planner-settings-textarea {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  min-height: 9rem;
+  padding: 0.75rem 0.9rem;
+  resize: vertical;
+  width: 100%;
+}
+
 .rotation-week {
   background: var(--surface);
   border: 1px solid var(--border);

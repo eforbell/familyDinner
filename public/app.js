@@ -86,7 +86,7 @@ function renderTonight() {
   if (orderIn || (meal && meal.is_protected)) {
     if (recipeLink) recipeLink.classList.add('hidden');
     document.getElementById('tonight-name').textContent = 'Order In Night 🛵';
-    document.getElementById('tonight-notes').textContent = 'No cooking tonight.';
+    document.getElementById('tonight-notes').textContent = 'No cooking tonight — vote for where to order.';
     document.getElementById('tonight-meta').innerHTML = '';
     document.querySelector('.tonight-actions').classList.add('hidden');
     // Show restaurant voting in the details panel
@@ -95,9 +95,7 @@ function renderTonight() {
     document.getElementById('tonight-tips').innerHTML = '';
     document.getElementById('tonight-timing').innerHTML = '';
     document.getElementById('tonight-equipment').textContent = '';
-    if (orderIn) {
-      renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, orderIn);
-    }
+    renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, orderIn);
     return;
   }
 
@@ -205,9 +203,10 @@ function buildDayExpandHtml(day) {
       <div id="restaurant-votes-${day.date}">
         ${buildRestaurantVotesHtml(orderIn, day.date)}
       </div>
+      ${meal && meal.is_protected ? '' : `
       <div class="day-actions" style="margin-top:.75rem">
         <button class="btn-danger" onclick="cancelOrderIn('${day.date}')">Cancel order-in</button>
-      </div>
+      </div>`}
     `;
   }
 

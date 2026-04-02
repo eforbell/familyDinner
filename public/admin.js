@@ -1,6 +1,7 @@
 let rotationData = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('save-restaurants-btn').addEventListener('click', saveRestaurantOptions);
   loadRotation();
 });
 
@@ -8,10 +9,20 @@ async function loadRotation() {
   try {
     const res = await fetch('api/rotation');
     rotationData = await res.json();
+    renderOrderInSettings();
     renderRotation();
   } catch (err) {
     setStatus('Could not load rotation data.', true);
   }
+}
+
+function renderOrderInSettings() {
+  if (!rotationData) return;
+  const textarea = document.getElementById('restaurant-options');
+  if (!textarea) return;
+  textarea.value = (rotationData.restaurants || [])
+    .map(restaurant => `${restaurant.emoji ? `${restaurant.emoji} ` : ''}${restaurant.name}`)
+    .join('\n');
 }
 
 function renderRotation() {
@@ -133,6 +144,28 @@ function updateLocalSlot(weekNumber, dayOfWeek, mealId) {
 
   day.meal_id = mealId;
   day.meal = mealId ? rotationData.meals.find(meal => meal.id === mealId) || null : null;
+}
+
+async function saveRestaurantOptions() {
+  const textarea = document.getElementById('restaurant-options');
+  try {
+    const res = await fetch('api/restaurants', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurant_options: textarea.value }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Could not save order-in options');
+    }
+
+    rotationData.restaurants = data.restaurants || [];
+    renderOrderInSettings();
+    setStatus('Order-in options saved.', false);
+  } catch (err) {
+    setStatus(err.message || 'Could not save order-in options.', true);
+  }
 }
 
 function setStatus(message, isError) {
