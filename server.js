@@ -64,7 +64,6 @@ const DEFAULT_MAGIC_GROCERY_PROMPT = [
 const RECIPE_DETAIL_TEMPLATE = fs.readFileSync(path.join(__dirname, 'public', 'recipe.html'), 'utf8');
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -279,13 +278,13 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-async function getAppConfigValue(key, fallback = null) {
-  const { rows } = await pool.query('SELECT value FROM app_config WHERE key = $1', [key]);
+async function getAppConfigValue(key, fallback = null, queryable = pool) {
+  const { rows } = await queryable.query('SELECT value FROM app_config WHERE key = $1', [key]);
   return rows.length ? rows[0].value : fallback;
 }
 
-async function setAppConfigValue(key, value) {
-  await pool.query(
+async function setAppConfigValue(key, value, queryable = pool) {
+  await queryable.query(
     `INSERT INTO app_config (key, value)
      VALUES ($1, $2)
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
@@ -318,6 +317,156 @@ async function getMagicRecipeSettings() {
     magic_recipe_detail_prompt: await getAppConfigValue('magic_recipe_detail_prompt', DEFAULT_MAGIC_RECIPE_DETAIL_PROMPT),
   };
 }
+
+const DEFAULT_RESTAURANTS = [
+  ['Chipotle', '🌯'],
+  ['Panda Express', '🥡'],
+  ['Pizza', '🍕'],
+  ['McDonald\'s', '🍟'],
+];
+
+async function countTable(tableName, queryable = pool) {
+  const allowed = new Set(['family_members', 'meals', 'meal_rotation', 'restaurants']);
+  if (!allowed.has(tableName)) throw new Error(`Unsupported count table: ${tableName}`);
+  const { rows } = await queryable.query(`SELECT COUNT(*)::int AS count FROM ${tableName}`);
+  return Number(rows[0]?.count || 0);
+}
+
+async function bootstrapState(queryable = pool) {
+  const [members, meals, rotationSlots, restaurants] = await Promise.all([
+    countTable('family_members', queryable),
+    countTable('meals', queryable),
+    countTable('meal_rotation', queryable),
+    countTable('restaurants', queryable),
+  ]);
+  const needsHousehold = members === 0;
+  const needsStarterContent = restaurants === 0;
+
+  return {
+    status: needsHousehold || needsStarterContent ? 'needs_setup' : 'ready',
+    app: 'family-dinner',
+    version: '1.0.0',
+    bootstrap: {
+      needs_household: needsHousehold,
+      needs_auth: false,
+      needs_starter_content: needsStarterContent,
+      ready: !needsHousehold && !needsStarterContent,
+    },
+    counts: {
+      family_members: members,
+      meals,
+      meal_rotation: rotationSlots,
+      restaurants,
+    },
+  };
+}
+
+async function withPoolTransaction(fn) {
+  if (typeof pool.connect !== 'function') return fn(pool);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+const BOOTSTRAP_PARENT_AVATARS = ['👨‍🍳', '👩‍🍳', '🧑‍🍳'];
+const BOOTSTRAP_KID_AVATARS = ['🧑', '👧', '👦'];
+
+function normalizeBootstrapMembers(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  let parentIndex = 0;
+  let kidIndex = 0;
+
+  return input
+    .map(member => ({
+      name: String(member?.name || '').trim(),
+      role: member?.role === 'kid' ? 'kid' : 'parent',
+      is_picky: Boolean(member?.is_picky),
+      hates_leftovers: Boolean(member?.hates_leftovers),
+    }))
+    .filter(member => member.name)
+    .filter(member => {
+      const key = member.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(member => {
+      const index = member.role === 'parent' ? parentIndex++ : kidIndex++;
+      const avatars = member.role === 'parent' ? BOOTSTRAP_PARENT_AVATARS : BOOTSTRAP_KID_AVATARS;
+      return { ...member, avatar_emoji: avatars[index % avatars.length] };
+    });
+}
+
+async function installStarterContent(queryable = pool) {
+  for (const [name, emoji] of DEFAULT_RESTAURANTS) {
+    await queryable.query(
+      `INSERT INTO restaurants (name, emoji, active)
+       VALUES ($1, $2, true)
+       ON CONFLICT DO NOTHING`,
+      [name, emoji]
+    );
+  }
+}
+
+function defaultRotationStartDate() {
+  return localDateString(mondayOf(new Date()));
+}
+
+async function installDefaultAppConfig(rotationStartDate = defaultRotationStartDate(), queryable = pool) {
+  const entries = [
+    ['rotation_start_date', rotationStartDate],
+    ['magic_meal_prompt', DEFAULT_MAGIC_MEAL_PROMPT],
+    ['magic_grocery_prompt', DEFAULT_MAGIC_GROCERY_PROMPT],
+    ['magic_recipe_import_prompt', DEFAULT_MAGIC_RECIPE_IMPORT_PROMPT],
+    ['magic_recipe_detail_prompt', DEFAULT_MAGIC_RECIPE_DETAIL_PROMPT],
+  ];
+
+  for (const [key, value] of entries) {
+    await queryable.query(
+      `INSERT INTO app_config (key, value)
+       VALUES ($1, $2)
+       ON CONFLICT (key) DO NOTHING`,
+      [key, value]
+    );
+  }
+}
+
+async function redirectToSetupIfNeeded(req, res, target = 'setup') {
+  try {
+    const state = await bootstrapState();
+    if (state.bootstrap.needs_household) {
+      res.redirect(target);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+    return true;
+  }
+}
+
+app.use(async (req, res, next) => {
+  if (req.method !== 'GET') return next();
+  if (req.path.startsWith('/api/')) return next();
+  if (req.path === '/setup' || req.path === '/setup.html') return next();
+  if (req.path === '/' || req.path === '/index.html') {
+    if (await redirectToSetupIfNeeded(req, res, 'setup')) return;
+  }
+  return next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 function createRecipeResponseSchema() {
   return {
@@ -1257,6 +1406,128 @@ async function weekDataForDate(date) {
 }
 
 // ── Routes ───────────────────────────────────────────────────
+
+app.get('/', async (req, res) => {
+  if (await redirectToSetupIfNeeded(req, res, 'setup')) return;
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/setup', async (req, res) => {
+  try {
+    const state = await bootstrapState();
+    if (!state.bootstrap.needs_household) return res.redirect('./');
+    res.sendFile(path.join(__dirname, 'public', 'setup.html'));
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    app: 'family-dinner',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/api/ready', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({
+      status: 'ok',
+      app: 'family-dinner',
+      checks: { db: 'ok' },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      app: 'family-dinner',
+      checks: { db: 'error' },
+      error: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.get('/api/bootstrap', async (_req, res) => {
+  try {
+    res.json(await bootstrapState());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bootstrap/starter-content', async (_req, res) => {
+  try {
+    if ((await countTable('restaurants')) > 0) {
+      return res.status(409).json({ error: 'Starter content already installed', code: 'starter_content_exists' });
+    }
+    await withPoolTransaction(async queryable => {
+      await installStarterContent(queryable);
+      await installDefaultAppConfig(defaultRotationStartDate(), queryable);
+    });
+    res.status(201).json({ ok: true, bootstrap: (await bootstrapState()).bootstrap });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bootstrap/household', async (req, res) => {
+  try {
+    const state = await bootstrapState();
+    if (!state.bootstrap.needs_household) {
+      return res.status(409).json({ error: 'Household already initialized', code: 'household_already_initialized' });
+    }
+
+    const members = normalizeBootstrapMembers(req.body?.members);
+    const rotationStartDate = String(req.body?.rotation_start_date || defaultRotationStartDate()).trim();
+    const installStarter = req.body?.install_starter_content !== false;
+
+    if (!members.length) {
+      return res.status(400).json({ error: 'At least one household member is required', code: 'members_required' });
+    }
+    if (!members.some(member => member.role === 'parent')) {
+      return res.status(400).json({ error: 'At least one parent is required', code: 'parent_required' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rotationStartDate)) {
+      return res.status(400).json({ error: 'rotation_start_date must be YYYY-MM-DD', code: 'invalid_rotation_start_date' });
+    }
+
+    const result = await withPoolTransaction(async queryable => {
+      const createdMembers = [];
+      for (const member of members) {
+        const { rows } = await queryable.query(`
+          INSERT INTO family_members (name, role, is_picky, hates_leftovers, avatar_emoji)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING id, name, role, is_picky, hates_leftovers, avatar_emoji
+        `, [
+          member.name,
+          member.role,
+          member.is_picky,
+          member.hates_leftovers,
+          member.avatar_emoji,
+        ]);
+        createdMembers.push(rows[0]);
+      }
+
+      await installDefaultAppConfig(rotationStartDate, queryable);
+      if (installStarter) {
+        await installStarterContent(queryable);
+      }
+
+      return { members: createdMembers };
+    });
+
+    res.status(201).json({
+      ok: true,
+      created_members: result.members,
+      bootstrap: (await bootstrapState()).bootstrap,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // /tonight — simple display page (Raspberry Pi / home screen shortcut)
 app.get('/tonight', async (req, res) => {
@@ -2354,6 +2625,7 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  pool,
   buildDefaultOrderIn,
   buildOrderInVotes,
   dedupeRestaurants,

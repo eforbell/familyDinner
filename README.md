@@ -64,7 +64,6 @@ npm install
 cp .env.example .env
 docker compose up -d db
 npm run db:migrate
-npm run db:seed
 npm start
 ```
 
@@ -84,12 +83,15 @@ Default local connection:
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5436/family_dinner
 ```
 
-Bootstrap and seed it:
+Bootstrap it:
 
 ```bash
 npm run db:migrate
-npm run db:seed
 ```
+
+Fresh installs should use `npm run db:migrate` as the schema path, then complete the
+browser setup flow to create household members and starter settings. `db/seed.sql` remains
+available for legacy/dev sample data, but should not be required for normal production bootstrap.
 
 To reset the local database completely:
 

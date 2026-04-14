@@ -906,6 +906,27 @@ body.app-has-nav .recipe-detail-page .admin-header {
   color: var(--red);
 }
 
+.setup-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.setup-card h2 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.setup-check {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.9rem;
+  gap: 0.5rem;
+}
+
 .rotation-grid {
   display: grid;
   gap: 1rem;

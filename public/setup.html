@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Set Up Family Dinner</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <span class="week-badge"></span>
+    <h1>🍽️ Set Up Dinner</h1>
+    <span style="width:2.5rem"></span>
+  </header>
+
+  <main class="admin-entry">
+    <section class="setup-card">
+      <h2>Welcome</h2>
+      <p class="admin-copy">
+        Family Dinner is installed, but it needs a household before anyone can vote, swap meals,
+        or start building the rotation. Create the first profiles here. You can add meals and tune
+        the rotation from the admin screens after setup.
+      </p>
+      <div id="setup-bootstrap-status" class="admin-status">Checking setup status…</div>
+    </section>
+
+    <section class="setup-card">
+      <h2>Household</h2>
+      <div class="meal-form-grid">
+        <label class="form-field">
+          <span>Parent / cook</span>
+          <input type="text" id="setup-parent-1" placeholder="Eric">
+        </label>
+        <label class="form-field">
+          <span>Second parent / cook (optional)</span>
+          <input type="text" id="setup-parent-2" placeholder="Alex">
+        </label>
+        <label class="form-field">
+          <span>Kids (optional)</span>
+          <textarea id="setup-kids" rows="4" placeholder="One per line, or separate with commas&#10;Jordan&#10;Casey"></textarea>
+        </label>
+      </div>
+    </section>
+
+    <section class="setup-card">
+      <h2>Starter settings</h2>
+      <div class="meal-form-grid">
+        <label class="form-field">
+          <span>Rotation week 1 starts</span>
+          <input type="date" id="setup-rotation-start">
+        </label>
+        <label class="setup-check">
+          <input type="checkbox" id="setup-starter-content" checked>
+          Install starter order-in restaurants and default AI prompts
+        </label>
+      </div>
+      <p class="admin-copy" style="margin-top:0.75rem">
+        This does not install a full meal plan. After setup, use <strong>Admin → Meals</strong>
+        to add the meals your family actually eats, then fill the 3-week rotation.
+      </p>
+    </section>
+
+    <section class="setup-card">
+      <div class="meal-form-actions">
+        <a href="." class="btn-ghost">Back</a>
+        <button class="btn-primary" id="setup-submit-btn">Create Household</button>
+      </div>
+      <div id="setup-submit-status" class="admin-status hidden"></div>
+    </section>
+  </main>
+
+  <script src="setup.js"></script>
+</body>
+</html>

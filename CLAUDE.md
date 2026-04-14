@@ -16,8 +16,8 @@ npm run dev          # node --watch (Node 18+, no nodemon needed)
 npm start            # production
 
 # Database setup (run once on a new Postgres instance)
-psql $DATABASE_URL -f db/schema.sql
-psql $DATABASE_URL -f db/seed.sql
+npm run db:migrate
+# then open the browser setup flow to create household members / starter settings
 ```
 
 Copy `.env.example` to `.env` and fill in `DATABASE_URL`.
@@ -30,7 +30,9 @@ Single-process Node.js/Express app, no build step.
 server.js          # Express app — all routes inline
 db/
   schema.sql       # CREATE TABLE statements
-  seed.sql         # All 17 meals + 3-week rotation + family members + config
+  migrate.js       # Migration runner
+  migrations/      # Numbered SQL migrations
+  seed.sql         # Legacy/dev sample data; browser setup is canonical first-run path
 public/
   index.html       # Main app shell
   style.css        # Dark theme, mobile-first, CSS custom properties
