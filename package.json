@@ -1,7 +1,7 @@
 {
   "name": "family-dinner",
   "version": "1.0.0",
-  "description": "Forbell family dinner app — what's for dinner tonight?",
+  "description": "Family dinner app — what's for dinner tonight?",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

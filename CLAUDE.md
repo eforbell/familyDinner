@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Family dinner "what's for dinner tonight?" app — LAN-hosted on a Linux server. Kids get a link, see tonight's meal. Built on a 3-week rotating menu from `forbell_family_menu.docx`.
+Family dinner "what's for dinner tonight?" app — LAN-hosted on a Linux server. Kids get a link, see tonight's meal. Built on a 3-week rotating menu from `family_menu.docx`.
 
 Family: Eric (Dad, main cook), Alex (Mom, project meals when energy allows — she has cancer, so energy flagging matters), Son (hates leftovers), Daughter (picky eater).
 
@@ -57,7 +57,7 @@ public/
 | `PUT /api/swap` | Override a day's meal (body: `{ date, meal_id }`) |
 | `DELETE /api/swap/:date` | Restore rotation default |
 | `POST /api/vote` | React to a meal (`{ meal_id, member_id, reaction }`) |
-| `POST /api/energy` | Alex's weekly energy flag (`{ energy_level: 1-5 }`) |
+| `POST /api/energy` | Mom's weekly energy flag (`{ energy_level: 1-5 }`) |
 | `POST /api/log` | Record what actually got cooked |
 
 ### Frontend State

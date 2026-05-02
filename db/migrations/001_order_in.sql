@@ -1,5 +1,5 @@
 -- Migration 001: Order-in nights + restaurant voting
--- Run: psql -U forbell -d family_dinner -h localhost -f db/migrations/001_order_in.sql
+-- Run: psql -U dbuser -d family_dinner -h localhost -f db/migrations/001_order_in.sql
 
 CREATE TABLE IF NOT EXISTS restaurants (
   id     SERIAL PRIMARY KEY,

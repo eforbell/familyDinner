@@ -12,7 +12,7 @@
   <!-- title -->
   <text x="600" y="460" font-size="56" font-weight="700" text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-        fill="#fafaf9">Forbell Family Dinner</text>
+        fill="#fafaf9">Family Dinner</text>
   <!-- tagline -->
   <text x="600" y="530" font-size="30" text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
