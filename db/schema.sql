@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS meal_rotation (
   UNIQUE(week_number, day_of_week)
 );
 
--- Per-date meal overrides (Alex swapping things around)
+-- Per-date meal overrides (anyone swapping things around)
 CREATE TABLE IF NOT EXISTS daily_overrides (
   id               SERIAL PRIMARY KEY,
   override_date    DATE NOT NULL UNIQUE,
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS cook_log (
   UNIQUE(cooked_date, meal_id)
 );
 
--- Alex's energy flag per week (1=rough week → 5=project meal week)
+-- Mom's energy flag per week (1=rough week → 5=project meal week)
 CREATE TABLE IF NOT EXISTS val_energy (
   id           SERIAL PRIMARY KEY,
   week_start   DATE NOT NULL UNIQUE,

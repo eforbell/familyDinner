@@ -2421,7 +2421,7 @@ app.get('/api/cook-log/export.csv', async (req, res) => {
   }
 });
 
-// POST /api/energy — Alex's weekly energy flag
+// POST /api/energy — Mom's weekly energy flag
 app.post('/api/energy', async (req, res) => {
   const { energy_level, note } = req.body;
   if (!energy_level || energy_level < 1 || energy_level > 5) {

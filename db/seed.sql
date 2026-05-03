@@ -1,5 +1,5 @@
 -- Family Dinner App — Seed Data
--- Run AFTER schema.sql: psql -U forbell -d family_dinner -h localhost -f db/seed.sql
+-- Run AFTER schema.sql: psql -U dbuser -d family_dinner -h localhost -f db/seed.sql
 -- Safe to re-run (ON CONFLICT DO NOTHING on config)
 
 -- ============================================================
@@ -13,7 +13,7 @@ TRUNCATE meals, recipes, family_members RESTART IDENTITY CASCADE;
 -- ============================================================
 INSERT INTO family_members (name, role, is_picky, hates_leftovers, avatar_emoji) VALUES
 ('Eric',      'parent', false, false, '👨‍🍳'),
-('Alex',       'parent', false, false, '👩‍🍳'),
+('Alex',      'parent', false, false, '👩‍🍳'),
 ('Jordan',  'kid', false, true,  '🧑'),
 ('Casey', 'kid', true,  false, '👧');
 
@@ -115,7 +115,7 @@ INSERT INTO meals (name, notes, recipe_tips, active_time_min, total_time_min, eq
 
 -- 16 ★ NEW
 ('Elevated Ramen Night',
- 'Dad controls a clean tonkotsu or shoyu broth base. Toppings bar: soft-boiled eggs, nori, corn, bamboo shoots, scallions. Alex''s note: keep broth clean — let the toppings bar do the work.',
+ 'Dad controls a clean tonkotsu or shoyu broth base. Toppings bar: soft-boiled eggs, nori, corn, bamboo shoots, scallions. Note: keep broth clean — let the toppings bar do the work.',
  'Quality broth base — Costco tonkotsu/shoyu packets, or chicken broth + soy + miso + garlic + ginger simmered 10 min. KEEP BROTH CLEAN. Toppings bar: soft-boiled eggs (7 min, ice bath), nori, corn, bamboo shoots, scallions, sesame seeds, chili oil. Leftover pulled pork sliced thin = instant chashu sub.',
  15, 20, ARRAY['pot'], '👨‍🍳', '🟢', true, false,
  ARRAY['ramen', 'asian', 'toppings-bar', 'japanese']),
