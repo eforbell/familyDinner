@@ -1,0 +1,33 @@
+/* Sovereign tokens — familyDinner */
+:root {
+  --font-display: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --accent: #E5944A;
+  --accent-pale: rgba(229, 148, 74, 0.18);
+  --accent-wash: rgba(229, 148, 74, 0.05);
+  --accent-soft: rgba(229, 148, 74, 0.1);
+  --accent-soft-strong: rgba(229, 148, 74, 0.18);
+  --accent-border-soft: rgba(229, 148, 74, 0.28);
+  --accent-dk: #c2410c;
+  --success-border: rgba(34,197,94,.3);
+  --danger-border: rgba(248,113,113,.3);
+  --elevated-bg: linear-gradient(145deg, rgba(41,37,36,.95), rgba(28,25,23,.95));
+  --accent-panel-bg: linear-gradient(145deg, rgba(249,115,22,.12), rgba(28,25,23,.95));
+  --table-head-bg: rgba(41,37,36,.96);
+  --code-bg: rgba(15,15,15,.45);
+}
+
+:root[data-theme="light"] {
+  --accent: #B66B2A;
+  --accent-pale: rgba(182, 107, 42, 0.18);
+  --accent-wash: rgba(182, 107, 42, 0.06);
+  --accent-soft: rgba(182, 107, 42, 0.1);
+  --accent-soft-strong: rgba(182, 107, 42, 0.18);
+  --accent-border-soft: rgba(182, 107, 42, 0.28);
+  --accent-dk: #b45309;
+  --success-border: rgba(21,128,61,.24);
+  --danger-border: rgba(185,28,28,.22);
+  --elevated-bg: linear-gradient(145deg, rgba(255,250,245,.98), rgba(243,235,226,.98));
+  --accent-panel-bg: linear-gradient(145deg, rgba(217,119,6,.10), rgba(255,250,245,.98));
+  --table-head-bg: rgba(240,231,222,.96);
+  --code-bg: rgba(240,231,222,.88);
+}
