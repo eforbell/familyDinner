@@ -4,3 +4,5 @@ node_modules/
 .DS_Store
 .omx/
 .playwright-cli/
+.omc/
+test-results/
