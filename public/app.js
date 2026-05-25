@@ -123,22 +123,28 @@ function renderTonight() {
   // Details panel
   const tips = document.getElementById('tonight-tips');
   tips.textContent = meal.recipe_tips || '';
-  if (!meal.recipe_tips) tips.parentElement.style.display = 'none';
+  tips.classList.toggle('hidden', !meal.recipe_tips);
 
   const timing = document.getElementById('tonight-timing');
   if (meal.active_time_min || meal.total_time_min) {
     timing.innerHTML = '';
+    timing.classList.remove('hidden');
     if (meal.active_time_min)
       timing.innerHTML += `<span class="timing-chip"><strong>${meal.active_time_min}m</strong> active</span>`;
     if (meal.total_time_min)
       timing.innerHTML += `<span class="timing-chip"><strong>${fmtTime(meal.total_time_min)}</strong> total</span>`;
   } else {
-    timing.parentElement.style.display = 'none';
+    timing.innerHTML = '';
+    timing.classList.add('hidden');
   }
 
   const equip = document.getElementById('tonight-equipment');
   if (meal.equipment && meal.equipment.length) {
     equip.textContent = '🍳 ' + meal.equipment.join(', ');
+    equip.classList.remove('hidden');
+  } else {
+    equip.textContent = '';
+    equip.classList.add('hidden');
   }
 
   renderVotes('tonight-votes', 'tonight-vote-display', meal.id);
