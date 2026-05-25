@@ -1642,6 +1642,18 @@ app.get('/tonight', async (req, res) => {
 	    .meal  { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
 	    .meta  { font-size: 1.8rem; }
 	    .sub   { color: var(--dim); font-size: 1rem; margin-bottom: 1.5rem; }
+	    .addon {
+	      margin: 0 auto 1rem;
+	      max-width: 560px;
+	      padding: .75rem .9rem;
+	      border-radius: 10px;
+	      border: 1px dashed var(--border);
+	      background: var(--surface);
+	      color: var(--muted);
+	      font-size: .95rem;
+	      line-height: 1.45;
+	    }
+	    .addon.hidden { display: none; }
 	    /* Restaurant voting grid */
 	    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; width: 100%; max-width: 360px; margin: 1rem auto 0; }
 	    .r-btn  {
@@ -1675,9 +1687,10 @@ app.get('/tonight', async (req, res) => {
 	  <div class="day">${safeDayName}</div>
 	  <div class="label">Tonight's Dinner</div>
 
-  ${isOrderIn ? `
+	  ${isOrderIn ? `
     <div class="meal">Order In Night 🛵</div>
     <div class="sub">No cooking tonight — pick your spot</div>
+    <div id="tonight-addon" class="addon hidden"></div>
     <div class="r-grid" id="r-grid"></div>
     <div style="display:flex;gap:.5rem;max-width:360px;margin:.75rem auto 0;">
       <input id="write-in-name" type="text" placeholder="Write-in restaurant"
@@ -1687,6 +1700,7 @@ app.get('/tonight', async (req, res) => {
 	  ` : `
 	    <div class="meal">${safeName}</div>
 	    <div class="meta">${safeCook} ${safeRating}</div>
+	    <div id="tonight-addon" class="addon hidden"></div>
 	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">open recipe →</a>` : ''}
 	    ${canVoteMeal ? `
 	      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
@@ -1722,8 +1736,22 @@ app.get('/tonight', async (req, res) => {
     async function init() {
       const res = await fetch('./api/members');
       members = await res.json();
+      renderAddon();
       if (document.getElementById('r-grid')) renderOrderInGrid(orderInVotes);
       if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
+    }
+
+    function renderAddon() {
+      const el = document.getElementById('tonight-addon');
+      if (!el) return;
+      const note = localStorage.getItem(\`fd_tonight_scratchpad_\${DATE}\`) || '';
+      if (!note.trim()) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+      }
+      el.textContent = \`Tonight add-on: \${note.trim()}\`;
+      el.classList.remove('hidden');
     }
 
     function renderOrderInGrid(v) {
