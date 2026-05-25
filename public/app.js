@@ -25,12 +25,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ── Data Fetching ─────────────────────────────────────────────
 async function loadWeek() {
   try {
-    const [viewRes, todayRes] = await Promise.all([
-      fetch(`api/week?offset_weeks=${weekOffset}`),
-      fetch('api/week'),
-    ]);
-    weekData = await viewRes.json();
-    todayWeekData = await todayRes.json();
+    if (weekOffset === 0) {
+      const res = await fetch('api/week');
+      const data = await res.json();
+      weekData = data;
+      todayWeekData = data;
+    } else {
+      const [viewRes, todayRes] = await Promise.all([
+        fetch(`api/week?offset_weeks=${weekOffset}`),
+        fetch('api/week'),
+      ]);
+      weekData = await viewRes.json();
+      todayWeekData = await todayRes.json();
+    }
     renderWeekBadge();
     renderTonight();
     renderWeekGrid();

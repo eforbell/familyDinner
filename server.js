@@ -208,8 +208,11 @@ function parseRestaurantOptionsInput(input) {
 }
 
 function parseRestaurantWriteIn(rawName, rawEmoji) {
-  const name = String(rawName || '').trim();
+  const name = String(rawName || '')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim();
   if (!name) return null;
+  if (name.length > 100) return null;
 
   const emoji = String(rawEmoji || '').trim() || null;
   return { name, emoji };
