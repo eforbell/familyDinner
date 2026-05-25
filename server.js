@@ -1750,7 +1750,7 @@ app.get('/tonight', async (req, res) => {
         el.textContent = '';
         return;
       }
-      el.textContent = \`Tonight add-on: \${note.trim()}\`;
+      el.textContent = note.trim();
       el.classList.remove('hidden');
     }
 

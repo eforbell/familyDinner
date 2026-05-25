@@ -654,7 +654,7 @@ function renderTonightScratchpad() {
   const key = tonightScratchpadKey();
   const value = key ? (localStorage.getItem(key) || '') : '';
   input.value = value;
-  preview.textContent = value ? `Tonight add-on: ${value}` : '';
+  preview.textContent = value || '';
   preview.classList.toggle('hidden', !value);
 }
 
