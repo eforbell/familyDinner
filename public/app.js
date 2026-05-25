@@ -625,31 +625,36 @@ function renderWeekNavState() {
   if (thisBtn) thisBtn.classList.toggle('hidden', weekOffset === 0);
 }
 
-function tonightScratchpadKey() {
-  return todayDate ? `fd_tonight_scratchpad_${todayDate}` : null;
-}
-
 function wireTonightScratchpad() {
   const input = document.getElementById('tonight-scratchpad-input');
   const save = document.getElementById('tonight-scratchpad-save');
   const clear = document.getElementById('tonight-scratchpad-clear');
   if (!input || !save || !clear) return;
 
-  save.addEventListener('click', () => {
-    const key = tonightScratchpadKey();
-    if (!key) return;
-    const value = input.value.trim();
-    if (value) localStorage.setItem(key, value);
-    else localStorage.removeItem(key);
-    renderTonightScratchpad();
+  save.addEventListener('click', async () => {
+    await saveTonightScratchpad(input.value);
   });
 
-  clear.addEventListener('click', () => {
-    const key = tonightScratchpadKey();
-    if (key) localStorage.removeItem(key);
-    input.value = '';
-    renderTonightScratchpad();
+  clear.addEventListener('click', async () => {
+    await saveTonightScratchpad('');
   });
+}
+
+async function saveTonightScratchpad(note) {
+  if (!todayDate) return;
+  try {
+    await fetch(`api/tonight-addon/${todayDate}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        note: String(note || ''),
+        updated_by: currentMember ? currentMember.name : null,
+      }),
+    });
+    await loadWeek();
+  } catch (err) {
+    console.error('Could not save tonight addon', err);
+  }
 }
 
 function renderTonightScratchpad() {
@@ -658,8 +663,9 @@ function renderTonightScratchpad() {
   const preview = document.getElementById('tonight-scratchpad-preview');
   if (!wrap || !input || !preview) return;
 
-  const key = tonightScratchpadKey();
-  const value = key ? (localStorage.getItem(key) || '') : '';
+  const sourceWeek = todayWeekData || weekData;
+  const today = sourceWeek && sourceWeek.days ? sourceWeek.days.find(d => d.is_today) : null;
+  const value = today && typeof today.addon_note === 'string' ? today.addon_note : '';
   input.value = value;
   preview.textContent = value || '';
   preview.classList.toggle('hidden', !value);
