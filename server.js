@@ -1346,7 +1346,7 @@ async function weekDataForDate(date) {
   const weekEnd   = localDateString(sunday);
   const rw        = await rotationWeek(now);
 
-  const [{ rows: rotationRows }, { rows: overrideRows }, { rows: orderInRows }, restaurants] = await Promise.all([
+  const [{ rows: rotationRows }, { rows: overrideRows }, { rows: orderInRows }, { rows: addonRows }, restaurants] = await Promise.all([
     pool.query(
       `SELECT r.day_of_week, m.*, false AS is_override
        FROM meal_rotation r
@@ -1378,12 +1378,21 @@ async function weekDataForDate(date) {
        ORDER BY o.order_date, count DESC, r.name`,
       [weekStart, weekEnd]
     ),
+    pool.query(
+      `SELECT addon_date, note, updated_by, updated_at
+       FROM tonight_addons
+       WHERE addon_date BETWEEN $1 AND $2`,
+      [weekStart, weekEnd]
+    ),
     getActiveRestaurants(),
   ]);
 
   const rotationByDay = new Map(rotationRows.map(row => [row.day_of_week, row]));
   const overridesByDate = new Map(
     overrideRows.map(row => [localDateString(parseDateOnly(row.override_date)), row])
+  );
+  const addonsByDate = new Map(
+    addonRows.map(row => [localDateString(parseDateOnly(row.addon_date)), row])
   );
   const orderInByDate = new Map();
 
@@ -1433,6 +1442,7 @@ async function weekDataForDate(date) {
       is_today: dateStr === todayStr,
       meal,
       order_in: orderIn,
+      addon_note: addonsByDate.get(dateStr)?.note || '',
     });
   }
 
@@ -1590,6 +1600,8 @@ app.get('/tonight', async (req, res) => {
     const safeRating = escapeHtml(rating);
     const safeOgDescription = escapeHtml(isOrderIn ? 'Order in night — vote for where!' : name);
 
+    const addonNote = today && today.addon_note ? String(today.addon_note) : '';
+    const safeAddonNote = escapeHtml(addonNote);
     // Embed restaurants + current votes as JSON for the client script
     const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
 
@@ -1693,7 +1705,7 @@ app.get('/tonight', async (req, res) => {
 	  ${isOrderIn ? `
     <div class="meal">Order In Night 🛵</div>
     <div class="sub">No cooking tonight — pick your spot</div>
-    <div id="tonight-addon" class="addon hidden"></div>
+    <div id="tonight-addon" class="addon${safeAddonNote ? '' : ' hidden'}">${safeAddonNote}</div>
     <div class="r-grid" id="r-grid"></div>
     <div style="display:flex;gap:.5rem;max-width:360px;margin:.75rem auto 0;">
       <input id="write-in-name" type="text" placeholder="Write-in restaurant"
@@ -1703,7 +1715,7 @@ app.get('/tonight', async (req, res) => {
 	  ` : `
 	    <div class="meal">${safeName}</div>
 	    <div class="meta">${safeCook} ${safeRating}</div>
-	    <div id="tonight-addon" class="addon hidden"></div>
+	    <div id="tonight-addon" class="addon${safeAddonNote ? '' : ' hidden'}">${safeAddonNote}</div>
 	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">open recipe →</a>` : ''}
 	    ${canVoteMeal ? `
 	      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
@@ -1739,22 +1751,8 @@ app.get('/tonight', async (req, res) => {
     async function init() {
       const res = await fetch('./api/members');
       members = await res.json();
-      renderAddon();
       if (document.getElementById('r-grid')) renderOrderInGrid(orderInVotes);
       if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
-    }
-
-    function renderAddon() {
-      const el = document.getElementById('tonight-addon');
-      if (!el) return;
-      const note = localStorage.getItem(\`fd_tonight_scratchpad_\${DATE}\`) || '';
-      if (!note.trim()) {
-        el.classList.add('hidden');
-        el.textContent = '';
-        return;
-      }
-      el.textContent = note.trim();
-      el.classList.remove('hidden');
     }
 
     function renderOrderInGrid(v) {
@@ -2755,6 +2753,40 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
       restaurant_id: restaurantId,
       order_in: await orderInForDate(dateStr),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tonight-addon/:date', async (req, res) => {
+  const dateStr = String(req.params.date || '').trim();
+  const note = String(req.body?.note || '').trim();
+  const updatedBy = req.body?.updated_by ? String(req.body.updated_by).trim() : null;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return res.status(400).json({ error: 'invalid date format' });
+  }
+  if (note.length > 500) {
+    return res.status(400).json({ error: 'note must be 500 characters or fewer' });
+  }
+
+  try {
+    if (!note) {
+      await pool.query('DELETE FROM tonight_addons WHERE addon_date = $1', [dateStr]);
+      return res.json({ success: true, addon: null });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO tonight_addons (addon_date, note, updated_by, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (addon_date) DO UPDATE
+       SET note = EXCLUDED.note,
+           updated_by = EXCLUDED.updated_by,
+           updated_at = NOW()
+       RETURNING addon_date, note, updated_by, updated_at`,
+      [dateStr, note, updatedBy]
+    );
+    res.json({ success: true, addon: rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
