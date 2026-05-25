@@ -659,6 +659,70 @@ select:focus { outline: 2px solid var(--accent); border-color: transparent; }
 .r-count  { font-size: 1rem; font-weight: 700; color: var(--accent); }
 .r-voters { font-size: 0.7rem; color: var(--muted); }
 
+.restaurant-write-in {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.restaurant-write-in input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.5rem 0.65rem;
+}
+
+.tonight-scratchpad {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.tonight-scratchpad textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  padding: 0.55rem 0.65rem;
+  font-family: inherit;
+}
+
+.tonight-scratchpad-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tonight-scratchpad-preview {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.week-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.week-nav-buttons {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.planner-week-outlook {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 /* ── Utilities ────────────────────────────────────────── */
 .hidden { display: none !important; }
 .muted  { color: var(--muted); }

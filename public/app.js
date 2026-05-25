@@ -1,15 +1,19 @@
 // ── State ────────────────────────────────────────────────────
 let currentMember = JSON.parse(localStorage.getItem('fd_member') || 'null');
 let weekData      = null;
+let todayWeekData = null;
 let allMeals      = [];
 let membersCache  = [];
 let swapTarget    = null;
 let todayDate     = null;
 let tonightMealId = null;
+let weekOffset    = 0;
 
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   updateWhoBtn();
+  wireWeekPaging();
+  wireTonightScratchpad();
   await loadWeek();
 
   if (!currentMember) {
@@ -21,11 +25,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ── Data Fetching ─────────────────────────────────────────────
 async function loadWeek() {
   try {
-    const res  = await fetch('api/week');
-    weekData   = await res.json();
+    if (weekOffset === 0) {
+      const res = await fetch('api/week');
+      const data = await res.json();
+      weekData = data;
+      todayWeekData = data;
+    } else {
+      const [viewRes, todayRes] = await Promise.all([
+        fetch(`api/week?offset_weeks=${weekOffset}`),
+        fetch('api/week'),
+      ]);
+      weekData = await viewRes.json();
+      todayWeekData = await todayRes.json();
+    }
     renderWeekBadge();
     renderTonight();
     renderWeekGrid();
+    renderWeekNavState();
   } catch (e) {
     console.error('Failed to load week', e);
   }
@@ -46,14 +62,20 @@ async function loadAllMeals() {
 // ── Render: Week Badge ────────────────────────────────────────
 function renderWeekBadge() {
   if (!weekData) return;
-  document.getElementById('week-badge').textContent = `Week ${weekData.rotation_week} of 3`;
+  const span = weekData.week_start
+    ? ` · ${fmtMonthDay(weekData.week_start)}–${fmtMonthDay(weekData.days && weekData.days[6] ? weekData.days[6].date : weekData.week_start)}`
+    : '';
+  document.getElementById('week-badge').textContent = `Week ${weekData.rotation_week} of 3${span}`;
+  const title = document.getElementById('week-section-title');
+  if (title) title.textContent = weekOffset === 0 ? 'This Week' : (weekOffset > 0 ? `Week +${weekOffset}` : `Week ${weekOffset}`);
 }
 
 // ── Render: Tonight ───────────────────────────────────────────
 function renderTonight() {
-  if (!weekData) return;
+  const sourceWeek = todayWeekData || weekData;
+  if (!sourceWeek) return;
 
-  const today = weekData.days.find(d => d.is_today);
+  const today = sourceWeek.days.find(d => d.is_today);
   if (!today) return;
 
   todayDate    = today.date;
@@ -71,6 +93,7 @@ function renderTonight() {
     const recipeLink = document.getElementById('tonight-recipe-link');
     if (recipeLink) recipeLink.classList.add('hidden');
     document.getElementById('tonight-name').textContent = 'Nothing planned';
+    renderTonightScratchpad();
     return;
   }
 
@@ -96,6 +119,7 @@ function renderTonight() {
     document.getElementById('tonight-timing').innerHTML = '';
     document.getElementById('tonight-equipment').textContent = '';
     renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, orderIn);
+    renderTonightScratchpad();
     return;
   }
 
@@ -106,25 +130,32 @@ function renderTonight() {
   // Details panel
   const tips = document.getElementById('tonight-tips');
   tips.textContent = meal.recipe_tips || '';
-  if (!meal.recipe_tips) tips.parentElement.style.display = 'none';
+  tips.classList.toggle('hidden', !meal.recipe_tips);
 
   const timing = document.getElementById('tonight-timing');
   if (meal.active_time_min || meal.total_time_min) {
     timing.innerHTML = '';
+    timing.classList.remove('hidden');
     if (meal.active_time_min)
       timing.innerHTML += `<span class="timing-chip"><strong>${meal.active_time_min}m</strong> active</span>`;
     if (meal.total_time_min)
       timing.innerHTML += `<span class="timing-chip"><strong>${fmtTime(meal.total_time_min)}</strong> total</span>`;
   } else {
-    timing.parentElement.style.display = 'none';
+    timing.innerHTML = '';
+    timing.classList.add('hidden');
   }
 
   const equip = document.getElementById('tonight-equipment');
   if (meal.equipment && meal.equipment.length) {
     equip.textContent = '🍳 ' + meal.equipment.join(', ');
+    equip.classList.remove('hidden');
+  } else {
+    equip.textContent = '';
+    equip.classList.add('hidden');
   }
 
   renderVotes('tonight-votes', 'tonight-vote-display', meal.id);
+  renderTonightScratchpad();
 }
 
 // ── Render: Week Grid ─────────────────────────────────────────
@@ -503,7 +534,7 @@ async function voteRestaurant(date, restaurantId) {
       const panel = document.getElementById(`restaurant-votes-${date}`);
       if (panel) panel.innerHTML = buildRestaurantVotesHtml(data.order_in, date);
       // Also refresh tonight if it's today
-      const todayEntry = weekData && weekData.days.find(d => d.is_today);
+      const todayEntry = todayWeekData && todayWeekData.days.find(d => d.is_today);
       if (todayEntry && todayEntry.date === date) {
         renderRestaurantVotes('tonight-votes', 'tonight-vote-display', date, data.order_in);
       }
@@ -513,7 +544,37 @@ async function voteRestaurant(date, restaurantId) {
   }
 }
 
-function buildRestaurantVotesHtml(orderIn, date) {
+async function submitRestaurantWriteIn(date, inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) return;
+  if (!currentMember) {
+    openMemberPicker(() => submitRestaurantWriteIn(date, inputId));
+    return;
+  }
+
+  try {
+    const res = await fetch(`api/order-in/${date}/write-in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ member_id: currentMember.id, name }),
+    });
+    const data = await res.json();
+    if (data.order_in) {
+      const panel = document.getElementById(`restaurant-votes-${date}`);
+      if (panel) panel.innerHTML = buildRestaurantVotesHtml(data.order_in, date, 'day');
+      const todayEntry = weekData && weekData.days.find(d => d.is_today);
+      if (todayEntry && todayEntry.date === date) {
+        renderRestaurantVotes('tonight-votes', 'tonight-vote-display', date, data.order_in);
+      }
+    }
+  } catch (e) {
+    console.error('Restaurant write-in failed', e);
+  }
+}
+
+function buildRestaurantVotesHtml(orderIn, date, scope = 'day') {
   // Use votes embedded in the orderIn object so the initial page load stays lean.
   const voteData = (orderIn && orderIn.votes) ? orderIn.votes : [];
   if (!voteData.length) return '<p class="muted" style="font-size:.85rem">No order-in options available.</p>';
@@ -522,6 +583,7 @@ function buildRestaurantVotesHtml(orderIn, date) {
     ? voteData.find(r => r.voters && r.voters.includes(currentMember.name))
     : null;
 
+  const inputId = `write-in-name-${scope}-${date}`;
   return `
     <div class="restaurant-grid">
       ${voteData.map(r => {
@@ -535,14 +597,72 @@ function buildRestaurantVotesHtml(orderIn, date) {
         </button>`;
       }).join('')}
     </div>
+    <div class="restaurant-write-in">
+      <input id="${inputId}" type="text" placeholder="Write-in restaurant (e.g., Thai Garden)">
+      <button class="btn-ghost" type="button" onclick="submitRestaurantWriteIn('${date}', '${inputId}')">Add write-in</button>
+    </div>
   `;
 }
 
 function renderRestaurantVotes(btnContainerId, displayId, date, orderIn) {
   const container = document.getElementById(btnContainerId);
   const display   = document.getElementById(displayId);
-  if (container) container.innerHTML = buildRestaurantVotesHtml(orderIn, date);
+  if (container) container.innerHTML = buildRestaurantVotesHtml(orderIn, date, 'tonight');
   if (display)   display.innerHTML = '';
+}
+
+function wireWeekPaging() {
+  const prev = document.getElementById('week-prev-btn');
+  const next = document.getElementById('week-next-btn');
+  const cur = document.getElementById('week-this-btn');
+  if (prev) prev.addEventListener('click', async () => { weekOffset -= 1; await loadWeek(); });
+  if (next) next.addEventListener('click', async () => { weekOffset += 1; await loadWeek(); });
+  if (cur) cur.addEventListener('click', async () => { weekOffset = 0; await loadWeek(); });
+}
+
+function renderWeekNavState() {
+  const thisBtn = document.getElementById('week-this-btn');
+  if (thisBtn) thisBtn.classList.toggle('hidden', weekOffset === 0);
+}
+
+function tonightScratchpadKey() {
+  return todayDate ? `fd_tonight_scratchpad_${todayDate}` : null;
+}
+
+function wireTonightScratchpad() {
+  const input = document.getElementById('tonight-scratchpad-input');
+  const save = document.getElementById('tonight-scratchpad-save');
+  const clear = document.getElementById('tonight-scratchpad-clear');
+  if (!input || !save || !clear) return;
+
+  save.addEventListener('click', () => {
+    const key = tonightScratchpadKey();
+    if (!key) return;
+    const value = input.value.trim();
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+    renderTonightScratchpad();
+  });
+
+  clear.addEventListener('click', () => {
+    const key = tonightScratchpadKey();
+    if (key) localStorage.removeItem(key);
+    input.value = '';
+    renderTonightScratchpad();
+  });
+}
+
+function renderTonightScratchpad() {
+  const wrap = document.getElementById('tonight-scratchpad');
+  const input = document.getElementById('tonight-scratchpad-input');
+  const preview = document.getElementById('tonight-scratchpad-preview');
+  if (!wrap || !input || !preview) return;
+
+  const key = tonightScratchpadKey();
+  const value = key ? (localStorage.getItem(key) || '') : '';
+  input.value = value;
+  preview.textContent = value || '';
+  preview.classList.toggle('hidden', !value);
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -561,6 +681,13 @@ function fmtTime(mins) {
     return m ? `${h}h ${m}m` : `${h}h`;
   }
   return `${mins}m`;
+}
+
+function fmtMonthDay(dateStr) {
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function ratingEmoji(rating) {

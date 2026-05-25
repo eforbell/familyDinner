@@ -84,6 +84,15 @@
             <div id="tonight-tips" class="detail-tips"></div>
             <div id="tonight-timing" class="detail-timing"></div>
             <div id="tonight-equipment" class="detail-equipment"></div>
+            <div id="tonight-scratchpad" class="tonight-scratchpad">
+              <label for="tonight-scratchpad-input" class="vote-label">Tonight scratchpad (does not edit meal)</label>
+              <textarea id="tonight-scratchpad-input" rows="2" placeholder="Add special sides, hype text, or notes for tonight only."></textarea>
+              <div class="tonight-scratchpad-actions">
+                <button id="tonight-scratchpad-save" class="btn-ghost" type="button">Save note</button>
+                <button id="tonight-scratchpad-clear" class="btn-ghost" type="button">Clear</button>
+              </div>
+              <div id="tonight-scratchpad-preview" class="tonight-scratchpad-preview hidden"></div>
+            </div>
             <div class="vote-section">
               <div class="vote-label">React</div>
               <div class="vote-buttons" id="tonight-votes"></div>
@@ -96,7 +105,14 @@
 
     <!-- Week view -->
     <section id="week-section">
-      <h2 class="section-heading">This Week</h2>
+      <div class="week-section-head">
+        <h2 id="week-section-title" class="section-heading">This Week</h2>
+        <div class="week-nav-buttons">
+          <button id="week-prev-btn" class="btn-ghost" type="button">← Previous week</button>
+          <button id="week-this-btn" class="btn-ghost hidden" type="button">This week</button>
+          <button id="week-next-btn" class="btn-ghost" type="button">Next week →</button>
+        </div>
+      </div>
       <div id="week-grid" class="week-grid"></div>
     </section>
 

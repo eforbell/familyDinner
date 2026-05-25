@@ -207,6 +207,17 @@ function parseRestaurantOptionsInput(input) {
     });
 }
 
+function parseRestaurantWriteIn(rawName, rawEmoji) {
+  const name = String(rawName || '')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim();
+  if (!name) return null;
+  if (name.length > 100) return null;
+
+  const emoji = String(rawEmoji || '').trim() || null;
+  return { name, emoji };
+}
+
 function normalizeMealPayload(body) {
   const activeTime = body.active_time_min === '' || body.active_time_min == null
     ? null
@@ -1634,6 +1645,18 @@ app.get('/tonight', async (req, res) => {
 	    .meal  { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
 	    .meta  { font-size: 1.8rem; }
 	    .sub   { color: var(--dim); font-size: 1rem; margin-bottom: 1.5rem; }
+	    .addon {
+	      margin: 0 auto 1rem;
+	      max-width: 560px;
+	      padding: .75rem .9rem;
+	      border-radius: 10px;
+	      border: 1px dashed var(--border);
+	      background: var(--surface);
+	      color: var(--muted);
+	      font-size: .95rem;
+	      line-height: 1.45;
+	    }
+	    .addon.hidden { display: none; }
 	    /* Restaurant voting grid */
 	    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; width: 100%; max-width: 360px; margin: 1rem auto 0; }
 	    .r-btn  {
@@ -1667,13 +1690,20 @@ app.get('/tonight', async (req, res) => {
 	  <div class="day">${safeDayName}</div>
 	  <div class="label">Tonight's Dinner</div>
 
-  ${isOrderIn ? `
+	  ${isOrderIn ? `
     <div class="meal">Order In Night 🛵</div>
     <div class="sub">No cooking tonight — pick your spot</div>
+    <div id="tonight-addon" class="addon hidden"></div>
     <div class="r-grid" id="r-grid"></div>
+    <div style="display:flex;gap:.5rem;max-width:360px;margin:.75rem auto 0;">
+      <input id="write-in-name" type="text" placeholder="Write-in restaurant"
+        style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:.55rem .6rem;">
+      <button class="r-btn" style="padding:.55rem .7rem" onclick="castWriteInVote()">Add</button>
+    </div>
 	  ` : `
 	    <div class="meal">${safeName}</div>
 	    <div class="meta">${safeCook} ${safeRating}</div>
+	    <div id="tonight-addon" class="addon hidden"></div>
 	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">open recipe →</a>` : ''}
 	    ${canVoteMeal ? `
 	      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
@@ -1709,8 +1739,22 @@ app.get('/tonight', async (req, res) => {
     async function init() {
       const res = await fetch('./api/members');
       members = await res.json();
+      renderAddon();
       if (document.getElementById('r-grid')) renderOrderInGrid(orderInVotes);
       if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
+    }
+
+    function renderAddon() {
+      const el = document.getElementById('tonight-addon');
+      if (!el) return;
+      const note = localStorage.getItem(\`fd_tonight_scratchpad_\${DATE}\`) || '';
+      if (!note.trim()) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+      }
+      el.textContent = note.trim();
+      el.classList.remove('hidden');
     }
 
     function renderOrderInGrid(v) {
@@ -1736,6 +1780,24 @@ app.get('/tonight', async (req, res) => {
       });
       const data = await res.json();
       if (data.order_in) renderOrderInGrid(data.order_in.votes);
+    }
+
+    async function castWriteInVote() {
+      const input = document.getElementById('write-in-name');
+      if (!input) return;
+      const name = input.value.trim();
+      if (!name) return;
+      if (!me) { openPicker(() => castWriteInVote()); return; }
+      const res = await fetch(\`./api/order-in/\${DATE}/write-in\`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_id: me.id, name }),
+      });
+      const data = await res.json();
+      if (data.order_in) {
+        renderOrderInGrid(data.order_in.votes);
+        input.value = '';
+      }
     }
 
     async function renderMealVotes() {
@@ -1825,7 +1887,13 @@ app.get('/api/tonight', async (req, res) => {
 // GET /api/week — full week view
 app.get('/api/week', async (req, res) => {
   try {
-    res.json(await weekDataForDate(new Date()));
+    const requestedOffset = Number.parseInt(String(req.query?.offset_weeks || '0'), 10);
+    const offsetWeeks = Number.isFinite(requestedOffset)
+      ? Math.max(-12, Math.min(12, requestedOffset))
+      : 0;
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + (offsetWeeks * 7));
+    res.json(await weekDataForDate(targetDate));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -2107,11 +2175,27 @@ app.get('/api/rotation', async (req, res) => {
       }),
     }));
 
+    const todayMonday = mondayOf(new Date());
+    const weekOutlook = [];
+    for (let i = 0; i < 3; i++) {
+      const weekStartDate = new Date(todayMonday);
+      weekStartDate.setDate(todayMonday.getDate() + (i * 7));
+      const weekEndDate = new Date(weekStartDate);
+      weekEndDate.setDate(weekStartDate.getDate() + 6);
+      weekOutlook.push({
+        offset_weeks: i,
+        rotation_week: await rotationWeek(weekStartDate),
+        week_start: localDateString(weekStartDate),
+        week_end: localDateString(weekEndDate),
+      });
+    }
+
     res.json({
       rotation_start_date: config[0] ? config[0].value : null,
       weeks,
       meals,
       restaurants,
+      week_outlook: weekOutlook,
     });
   } catch (err) {
     console.error(err);
@@ -2599,6 +2683,78 @@ app.post('/api/order-in/:date/vote', async (req, res) => {
       [dateStr, restaurant_id, member_id]
     );
     res.json({ success: true, order_in: await orderInForDate(dateStr) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/order-in/:date/write-in', async (req, res) => {
+  const { member_id, name, emoji } = req.body || {};
+  if (!member_id) return res.status(400).json({ error: 'member_id is required' });
+
+  const writeIn = parseRestaurantWriteIn(name, emoji);
+  if (!writeIn) return res.status(400).json({ error: 'name is required' });
+
+  try {
+    const dateStr = req.params.date;
+    const [existingOrderIn, meal] = await Promise.all([
+      orderInForDate(dateStr),
+      mealForDate(parseDateOnly(dateStr)),
+    ]);
+    const canVoteForOrderIn = !!(existingOrderIn || (meal && meal.is_protected));
+    if (!canVoteForOrderIn) {
+      return res.status(400).json({ error: 'order-in voting is not enabled for this date' });
+    }
+
+    await pool.query(
+      `INSERT INTO order_in_nights (order_date)
+       VALUES ($1)
+       ON CONFLICT (order_date) DO NOTHING`,
+      [dateStr]
+    );
+
+    let restaurantId = null;
+    const { rows: existingRows } = await pool.query(
+      `SELECT id
+       FROM restaurants
+       WHERE lower(name) = lower($1)
+       ORDER BY active DESC, id ASC
+       LIMIT 1`,
+      [writeIn.name]
+    );
+
+    if (existingRows.length) {
+      restaurantId = existingRows[0].id;
+      await pool.query(
+        `UPDATE restaurants
+         SET name = $2,
+             emoji = COALESCE($3, emoji),
+             active = true
+         WHERE id = $1`,
+        [restaurantId, writeIn.name, writeIn.emoji]
+      );
+    } else {
+      const { rows: createdRows } = await pool.query(
+        `INSERT INTO restaurants (name, emoji, active)
+         VALUES ($1, $2, true)
+         RETURNING id`,
+        [writeIn.name, writeIn.emoji]
+      );
+      restaurantId = createdRows[0].id;
+    }
+
+    await pool.query(
+      `INSERT INTO restaurant_votes (order_date, restaurant_id, member_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (order_date, member_id) DO UPDATE SET restaurant_id = $2, created_at = NOW()`,
+      [dateStr, restaurantId, member_id]
+    );
+
+    res.json({
+      success: true,
+      restaurant_id: restaurantId,
+      order_in: await orderInForDate(dateStr),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

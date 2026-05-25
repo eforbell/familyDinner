@@ -35,6 +35,8 @@ function renderRotation() {
     meta.textContent = 'No rotation start date is set.';
   }
 
+  renderWeekOutlook();
+
   const grid = document.getElementById('rotation-grid');
   grid.innerHTML = rotationData.weeks.map(week => `
     <section class="rotation-week">
@@ -47,6 +49,21 @@ function renderRotation() {
       </div>
     </section>
   `).join('');
+}
+
+function renderWeekOutlook() {
+  const wrap = document.getElementById('planner-week-outlook');
+  if (!wrap) return;
+  const outlook = Array.isArray(rotationData.week_outlook) ? rotationData.week_outlook : [];
+  if (!outlook.length) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  wrap.innerHTML = outlook.map(entry => {
+    const label = entry.offset_weeks === 0 ? 'This week' : `Week +${entry.offset_weeks}`;
+    return `<div><strong>${label}:</strong> Week ${entry.rotation_week} · ${fmtDateShort(entry.week_start)} → ${fmtDateShort(entry.week_end)}</div>`;
+  }).join('');
 }
 
 function buildSlotHtml(weekNumber, day) {
@@ -186,6 +203,13 @@ function fmtDate(dateStr) {
 
 function dayName(dayOfWeek) {
   return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][dayOfWeek - 1] || '';
+}
+
+function fmtDateShort(dateStr) {
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function kidRatingClass(rating) {
