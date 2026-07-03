@@ -32,12 +32,17 @@
 
     <section class="meal-admin-layout recipe-layout">
       <section class="meal-library-panel recipe-browser-panel">
-        <div class="recipe-browser-head">
-          <h2>Browse recipes</h2>
-          <p class="muted">Search, tap, and cook.</p>
+        <div class="recipe-toolbar">
+          <input id="recipe-search" class="meal-search" type="search"
+                 placeholder="Search recipes, tags, ingredients…" autocomplete="off">
+          <select id="recipe-sort" class="recipe-sort" aria-label="Sort recipes">
+            <option value="title">A → Z</option>
+            <option value="newest">Newest first</option>
+            <option value="time">Quickest first</option>
+          </select>
         </div>
-        <input id="recipe-search" class="meal-search" type="search" placeholder="Search recipes">
-        <div id="recipe-list" class="meal-list recipe-browser-list"></div>
+        <div id="recipe-count" class="recipe-count"></div>
+        <div id="recipe-list" class="recipe-card-grid"></div>
       </section>
     </section>
   </div>

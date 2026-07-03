@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Plan the Week 🍽️</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="sovereign-fonts.css">
+  <link rel="stylesheet" href="sovereign-chassis.css">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="dinner-skin.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-nav-page="plan" data-nav-root=".">
+  <div id="app" class="admin-app">
+    <header class="admin-header">
+      <div>
+        <div class="week-badge" id="plan-range-badge"></div>
+        <h1>Plan the Week</h1>
+      </div>
+      <div class="admin-header-actions">
+        <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+      </div>
+    </header>
+
+    <section class="plan-controls">
+      <div class="plan-week-switch" role="group" aria-label="Week to plan">
+        <button id="plan-prev-btn" class="btn-ghost plan-arrow" type="button" aria-label="Earlier week">←</button>
+        <button id="plan-this-btn" class="plan-switch-btn" type="button">This week</button>
+        <button id="plan-next-btn" class="plan-switch-btn" type="button">Next week</button>
+        <button id="plan-fwd-btn" class="btn-ghost plan-arrow" type="button" aria-label="Later week">→</button>
+      </div>
+      <div id="plan-progress" class="plan-progress"></div>
+    </section>
+
+    <p id="plan-status" class="admin-status hidden"></p>
+
+    <section id="plan-autofill" class="plan-autofill hidden">
+      <div class="plan-autofill-copy">
+        <strong id="plan-autofill-title">Fill the empty nights</strong>
+        <span class="muted" id="plan-autofill-sub">Start from the rotation template or repeat last week, then tweak.</span>
+      </div>
+      <div class="plan-autofill-actions">
+        <button id="autofill-rotation-btn" class="btn-primary" type="button">Fill from rotation</button>
+        <button id="autofill-lastweek-btn" class="btn-ghost" type="button">Copy last week</button>
+      </div>
+    </section>
+
+    <section id="plan-days" class="plan-days">
+      <div class="loading-pulse">Loading…</div>
+    </section>
+  </div>
+
+  <script src="theme.js"></script>
+  <script src="nav.js"></script>
+  <script src="meal-picker.js"></script>
+  <script src="plan.js"></script>
+</body>
+</html>

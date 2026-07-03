@@ -18,11 +18,12 @@ test('recipe browser stays focused on browsing while builder stays separate', as
   const browserRes = await fetch(`${baseUrl}/recipes`);
   assert.equal(browserRes.status, 200);
   const browserHtml = await browserRes.text();
-  assert.match(browserHtml, /Browse recipes/);
   assert.match(browserHtml, /Recipe Builder/);
   assert.doesNotMatch(browserHtml, /id="recipe-import-url"/);
   assert.match(browserHtml, /meal-admin-layout recipe-layout/);
-  assert.match(browserHtml, /recipe-browser-list/);
+  assert.match(browserHtml, /recipe-toolbar/);
+  assert.match(browserHtml, /id="recipe-sort"/);
+  assert.match(browserHtml, /recipe-card-grid/);
   assert.doesNotMatch(browserHtml, /Open builder/);
   assert.doesNotMatch(browserHtml, /Cook-view first/);
   assert.doesNotMatch(browserHtml, /What moved\?/);
@@ -61,7 +62,7 @@ test('recipe browser and builder scripts use relative app paths for subpath depl
   const browserHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'recipes.html'), 'utf8');
   const builderHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-recipes.html'), 'utf8');
 
-  assert.match(browserScript, /fetch\('api\/recipes'\)/);
+  assert.match(browserScript, /fetch\(`api\/recipes/);
   assert.match(browserScript, /href="recipes\/\$\{recipe\.id\}"/);
   assert.match(browserHtml, /href="admin\/recipes"/);
 

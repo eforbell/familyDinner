@@ -4,6 +4,7 @@ const fs = require('fs');
 const { Pool } = require('pg');
 const path = require('path');
 const {
+  isValidDateOnlyString,
   localDateString,
   mealVoteWeekContext,
   mondayOf,
@@ -1124,7 +1125,6 @@ async function getMagicGroceryContext(date) {
     settings,
     week_start: week.week_start,
     week_end: localDateString(weekEndDate),
-    rotation_week: week.rotation_week,
     planned_meals: plannedMeals,
   };
 }
@@ -1225,7 +1225,6 @@ async function generateMagicGroceryList(targetDate, requestNotes = '') {
             stored_prompt: context.settings.magic_grocery_prompt,
             request_notes: requestNotes,
             week_start: context.week_start,
-            rotation_week: context.rotation_week,
             planned_meals: context.planned_meals,
           }),
         },
@@ -1285,31 +1284,62 @@ async function rotationWeek(date) {
   return ((weeks % 3) + 3) % 3 + 1;
 }
 
-/** Fetch the meal for a given date, respecting daily overrides. */
+/** Fetch the planned meal for a given date. */
 async function mealForDate(date) {
   const dateStr = localDateString(date);
-  const rw = await rotationWeek(date);
-  const dow = isoDay(date);
-
-  // Override first
-  const { rows: ov } = await pool.query(
-    `SELECT m.*, true as is_override, o.note as override_note
-     FROM daily_overrides o
-     JOIN meals m ON m.id = o.override_meal_id
-     WHERE o.override_date = $1`,
+  const { rows } = await pool.query(
+    `SELECT m.*, p.note AS plan_note
+     FROM plan_days p
+     JOIN meals m ON m.id = p.meal_id
+     WHERE p.plan_date = $1`,
     [dateStr]
   );
-  if (ov.length) return ov[0];
+  return rows[0] || null;
+}
 
-  // Rotation template
+/** Rotation-template suggestions for the week containing `date`, keyed by ISO day. */
+async function rotationWeekSlots(date) {
+  const rw = await rotationWeek(date);
   const { rows } = await pool.query(
-    `SELECT m.*, false as is_override
+    `SELECT r.day_of_week, m.id, m.name, m.cook, m.kid_rating, m.is_new,
+            m.is_protected, m.active_time_min, m.total_time_min
      FROM meal_rotation r
      JOIN meals m ON m.id = r.meal_id
-     WHERE r.week_number = $1 AND r.day_of_week = $2`,
-    [rw, dow]
+     WHERE r.week_number = $1`,
+    [rw]
   );
-  return rows[0] || null;
+  return new Map(rows.map(row => [row.day_of_week, row]));
+}
+
+/** Set or clear the planned meal for a date. `mealId` null clears the day. */
+async function upsertPlanDay(date, mealId, note = null, createdBy = null) {
+  if (mealId === null) {
+    await pool.query('DELETE FROM plan_days WHERE plan_date = $1', [date]);
+    return;
+  }
+  await pool.query(
+    `INSERT INTO plan_days (plan_date, meal_id, note, created_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (plan_date)
+     DO UPDATE SET meal_id = $2, note = $3, created_by = $4, updated_at = NOW()`,
+    [date, mealId, note, createdBy]
+  );
+}
+
+/** Week plan payload for the Plan page: resolved days + rotation suggestions. */
+async function planForDate(date) {
+  const [week, suggestions] = await Promise.all([
+    weekDataForDate(date),
+    rotationWeekSlots(date).catch(() => new Map()),
+  ]);
+
+  return {
+    ...week,
+    days: week.days.map(day => ({
+      ...day,
+      rotation_suggestion: suggestions.get(day.day_of_week) || null,
+    })),
+  };
 }
 
 /** Returns order-in status + restaurant vote tallies for a date, or null. */
@@ -1338,28 +1368,20 @@ async function weekDataForDate(date) {
   const now      = new Date(date);
   const monday   = mondayOf(now);
   const sunday   = new Date(monday);
-  const todayStr = localDateString(now);
+  const todayStr = localDateString(new Date()); // actual today, not the requested week
 
   sunday.setDate(monday.getDate() + 6);
 
   const weekStart = localDateString(monday);
   const weekEnd   = localDateString(sunday);
-  const rw        = await rotationWeek(now);
 
-  const [{ rows: rotationRows }, { rows: overrideRows }, { rows: orderInRows }, { rows: addonRows }, restaurants] = await Promise.all([
+  const [{ rows: planRows }, { rows: orderInRows }, { rows: addonRows }, restaurants] = await Promise.all([
     pool.query(
-      `SELECT r.day_of_week, m.*, false AS is_override
-       FROM meal_rotation r
-       JOIN meals m ON m.id = r.meal_id
-       WHERE r.week_number = $1
-       ORDER BY r.day_of_week`,
-      [rw]
-    ),
-    pool.query(
-      `SELECT o.override_date, o.note AS override_note, m.*, true AS is_override
-       FROM daily_overrides o
-       JOIN meals m ON m.id = o.override_meal_id
-       WHERE o.override_date BETWEEN $1 AND $2`,
+      `SELECT p.plan_date, p.note AS plan_note, m.*
+       FROM plan_days p
+       JOIN meals m ON m.id = p.meal_id
+       WHERE p.plan_date BETWEEN $1 AND $2
+       ORDER BY p.plan_date`,
       [weekStart, weekEnd]
     ),
     pool.query(
@@ -1387,9 +1409,8 @@ async function weekDataForDate(date) {
     getActiveRestaurants(),
   ]);
 
-  const rotationByDay = new Map(rotationRows.map(row => [row.day_of_week, row]));
-  const overridesByDate = new Map(
-    overrideRows.map(row => [localDateString(parseDateOnly(row.override_date)), row])
+  const plansByDate = new Map(
+    planRows.map(row => [localDateString(parseDateOnly(row.plan_date)), row])
   );
   const addonsByDate = new Map(
     addonRows.map(row => [localDateString(parseDateOnly(row.addon_date)), row])
@@ -1433,7 +1454,7 @@ async function weekDataForDate(date) {
     day.setDate(monday.getDate() + i);
 
     const dateStr = localDateString(day);
-    const meal = overridesByDate.get(dateStr) || rotationByDay.get(i + 1) || null;
+    const meal = plansByDate.get(dateStr) || null;
     const orderIn = resolveDayOrderIn(dateStr, meal, orderInByDate.get(dateStr) || null, restaurants);
     days.push({
       date: dateStr,
@@ -1447,7 +1468,6 @@ async function weekDataForDate(date) {
   }
 
   return {
-    rotation_week: rw,
     week_start: weekStart,
     days,
   };
@@ -1602,6 +1622,17 @@ app.get('/tonight', async (req, res) => {
 
     const addonNote = today && today.addon_note ? String(today.addon_note) : '';
     const safeAddonNote = escapeHtml(addonNote);
+    const ratingDesc = rating.includes('🟢') ? 'Whole family'
+      : rating.includes('🟡') ? 'Adults + daughter'
+      : rating.includes('🔵') ? 'Adults + son'
+      : rating.includes('🔴') ? 'Adults only'
+      : '';
+    const notes = meal && meal.notes ? escapeHtml(meal.notes) : '';
+    const timeChip = meal && meal.total_time_min
+      ? (meal.total_time_min >= 60
+          ? `${Math.floor(meal.total_time_min / 60)}h${meal.total_time_min % 60 ? ` ${meal.total_time_min % 60}m` : ''}`
+          : `${meal.total_time_min}m`)
+      : '';
     // Embed restaurants + current votes as JSON for the client script
     const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
 
@@ -1613,116 +1644,201 @@ app.get('/tonight', async (req, res) => {
 	  <meta name="theme-color" content="#0f0f0f">
 	  <title>Tonight's Dinner 🍽️</title>
 	  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+	  <link rel="stylesheet" href="sovereign-fonts.css">
+	  <link rel="stylesheet" href="sovereign-chassis.css">
+	  <link rel="stylesheet" href="tokens.css">
+	  <link rel="stylesheet" href="dinner-skin.css">
 	  <link rel="stylesheet" href="style.css">
 	  <meta property="og:title" content="Tonight's Dinner">
 	  <meta property="og:description" content="${safeOgDescription}">
 	  <meta property="og:image" content="og-image.svg">
   <meta property="og:type" content="website">
 	  <style>
-	    * { margin: 0; padding: 0; box-sizing: border-box; }
-	    :root {
-	      --bg: #0f0f0f;
-	      --surface: #1c1917;
-	      --surface2: #292524;
-	      --border: #3a3330;
-	      --accent: #f97316;
-	      --text: #fafaf9;
-	      --muted: #a8a29e;
-	      --dim: #6b7280;
-	    }
-	    :root[data-theme="light"] {
-	      --bg: #f6f1eb;
-	      --surface: #fffaf5;
-	      --surface2: #f0e7de;
-	      --border: #d6c7b8;
-	      --accent: #d97706;
-	      --text: #201714;
-	      --muted: #6f6258;
-	      --dim: #8c7b6f;
-	    }
-	    body {
-	      background: var(--bg); color: var(--text);
-	      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	      min-height: 100dvh;
-	      text-align: center;
-	    }
 	    .tonight-route-shell {
 	      margin: 0 auto;
-	      max-width: 780px;
-	      padding: 2rem 1.5rem 6rem;
+	      max-width: 720px;
+	      padding: 1.5rem 1rem 6rem;
+	      text-align: center;
 	      width: 100%;
 	    }
-	    .day   { font-size: 1rem; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-bottom: 1rem; }
-	    .label { font-size: .85rem; color: var(--accent); letter-spacing: .2em; text-transform: uppercase; margin-bottom: .5rem; }
-	    .meal  { font-size: clamp(1.8rem, 6vw, 3.5rem); font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
-	    .meta  { font-size: 1.8rem; }
-	    .sub   { color: var(--dim); font-size: 1rem; margin-bottom: 1.5rem; }
-	    .addon {
-	      margin: 0 auto 1rem;
-	      max-width: 560px;
-	      padding: .75rem .9rem;
-	      border-radius: 10px;
-	      border: 1px dashed var(--border);
+	    .tn-card {
 	      background: var(--surface);
+	      border: 1px solid var(--border);
+	      border-radius: var(--radius, 16px);
+	      overflow: hidden;
+	      padding: 2rem 1.25rem 1.75rem;
+	      position: relative;
+	    }
+	    .tn-card::before {
+	      background: linear-gradient(90deg, var(--accent), transparent 70%);
+	      content: '';
+	      height: 3px;
+	      inset: 0 0 auto 0;
+	      position: absolute;
+	    }
+	    .tn-day   { color: var(--muted); font-size: .95rem; letter-spacing: .15em; margin-bottom: 1rem; text-transform: uppercase; }
+	    .tn-label { color: var(--accent); font-size: .8rem; font-weight: 700; letter-spacing: .22em; margin-bottom: .5rem; text-transform: uppercase; }
+	    .tn-meal  { font-size: clamp(2rem, 7vw, 3.4rem); font-weight: 750; line-height: 1.12; margin-bottom: .9rem; overflow-wrap: anywhere; }
+	    .tn-sub   { color: var(--muted); font-size: 1rem; line-height: 1.5; margin: 0 auto 1rem; max-width: 34rem; }
+	    .tn-chips { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; margin-bottom: 1rem; }
+	    .tn-chip  {
+	      background: var(--surface2, var(--elevated-bg));
+	      border: 1px solid var(--border);
+	      border-radius: 999px;
+	      color: var(--muted);
+	      font-size: .85rem;
+	      font-weight: 600;
+	      padding: .3rem .8rem;
+	    }
+	    .tn-chip.big { font-size: 1.05rem; }
+	    .addon {
+	      background: var(--surface2, var(--elevated-bg));
+	      border: 1px dashed var(--border);
+	      border-radius: 10px;
 	      color: var(--muted);
 	      font-size: .95rem;
 	      line-height: 1.45;
+	      margin: 0 auto 1rem;
+	      max-width: 32rem;
+	      padding: .75rem .9rem;
 	    }
 	    .addon.hidden { display: none; }
-	    /* Restaurant voting grid */
-	    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; width: 100%; max-width: 360px; margin: 1rem auto 0; }
+	    .tn-section { color: var(--muted); font-size: .85rem; font-weight: 700; letter-spacing: .12em; margin: 1.5rem 0 .75rem; text-transform: uppercase; }
+	    /* Restaurant voting grid — the kids' arena */
+	    .r-grid { display: grid; gap: .65rem; grid-template-columns: repeat(2, 1fr); margin: 1rem auto 0; max-width: 420px; width: 100%; }
 	    .r-btn  {
-	      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-	      color: var(--text); cursor: pointer; font-family: inherit;
-	      display: flex; flex-direction: column; align-items: center; gap: .2rem;
-	      padding: .9rem .5rem; transition: border-color .15s, background .15s;
+	      align-items: center;
+	      background: var(--surface2, var(--elevated-bg));
+	      border: 2px solid var(--border);
+	      border-radius: 16px;
+	      color: var(--text);
+	      cursor: pointer;
+	      display: flex;
+	      flex-direction: column;
+	      font-family: inherit;
+	      gap: .25rem;
+	      min-height: 92px;
+	      padding: .9rem .5rem;
+	      position: relative;
+	      transition: border-color .15s, background .15s, transform .1s;
 	    }
-	    .r-btn:hover  { background: var(--surface2); border-color: var(--muted); }
-	    .r-btn.active { border-color: var(--accent); background: rgba(249,115,22,.12); }
-	    .r-emoji  { font-size: 1.8rem; line-height: 1; }
-	    .r-name   { font-size: .85rem; font-weight: 600; }
-	    .r-count  { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
-	    .r-voters { font-size: .7rem; color: var(--muted); }
+	    .r-btn:hover  { border-color: var(--muted); }
+	    .r-btn:active { transform: scale(.97); }
+	    .r-btn.active { background: var(--accent-soft, rgba(249,115,22,.12)); border-color: var(--accent); }
+	    .r-btn.leading { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft, rgba(249,115,22,.18)); }
+	    .r-crown  { font-size: 1rem; position: absolute; right: .5rem; top: .4rem; }
+	    .r-emoji  { font-size: 2.1rem; line-height: 1.15; }
+	    .r-name   { font-size: .9rem; font-weight: 650; }
+	    .r-count  {
+	      background: var(--accent);
+	      border-radius: 999px;
+	      color: #fff;
+	      font-size: .8rem;
+	      font-weight: 800;
+	      left: .5rem;
+	      min-width: 1.5rem;
+	      padding: .1rem .35rem;
+	      position: absolute;
+	      top: .4rem;
+	    }
+	    .r-voters { color: var(--muted); font-size: .72rem; line-height: 1.3; }
+	    .tn-writein { display: flex; gap: .5rem; margin: .85rem auto 0; max-width: 420px; }
+	    .tn-writein input {
+	      background: var(--surface2, var(--elevated-bg));
+	      border: 1px solid var(--border);
+	      border-radius: 12px;
+	      color: var(--text);
+	      flex: 1;
+	      font: inherit;
+	      min-width: 0;
+	      padding: .65rem .8rem;
+	    }
+	    .tn-writein button {
+	      background: transparent;
+	      border: 1px solid var(--border);
+	      border-radius: 12px;
+	      color: var(--text);
+	      cursor: pointer;
+	      font: inherit;
+	      font-weight: 600;
+	      padding: .65rem 1rem;
+	    }
+	    .tn-writein button:hover { border-color: var(--accent); color: var(--accent); }
+	    /* Meal reactions */
+	    .react-row { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-top: .5rem; }
+	    .react-btn {
+	      align-items: center;
+	      background: var(--surface2, var(--elevated-bg));
+	      border: 2px solid var(--border);
+	      border-radius: 999px;
+	      cursor: pointer;
+	      display: flex;
+	      font-size: 1.6rem;
+	      height: 3.4rem;
+	      justify-content: center;
+	      transition: border-color .15s, background .15s, transform .1s;
+	      width: 3.4rem;
+	    }
+	    .react-btn:hover  { border-color: var(--muted); }
+	    .react-btn:active { transform: scale(1.15); }
+	    .react-btn.active { background: var(--accent-soft, rgba(249,115,22,.12)); border-color: var(--accent); }
+	    .react-display { color: var(--muted); font-size: 1.05rem; margin-top: .8rem; }
+	    .recipe-link {
+	      border: 1px solid var(--accent-border-soft, rgba(249,115,22,.35));
+	      border-radius: 999px;
+	      color: var(--accent);
+	      display: inline-block;
+	      font-weight: 600;
+	      margin-top: .25rem;
+	      padding: .45rem 1rem;
+	      text-decoration: none;
+	    }
 	    /* Member picker */
-	    .picker { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+	    .picker { align-items: center; background: rgba(0,0,0,.8); display: flex; inset: 0; justify-content: center; padding: 1rem; position: fixed; z-index: 60; }
 	    .picker.hidden { display: none; }
-	    .picker-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; width: 100%; max-width: 320px; }
-	    .picker-box h2 { margin-bottom: 1rem; font-size: 1.1rem; }
-	    .m-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-	    .m-btn  { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); cursor: pointer; font-family: inherit; padding: .9rem .5rem; display: flex; flex-direction: column; align-items: center; gap: .3rem; transition: border-color .15s; }
+	    .picker-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; max-width: 320px; padding: 1.5rem; width: 100%; }
+	    .picker-box h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+	    .m-grid { display: grid; gap: .75rem; grid-template-columns: 1fr 1fr; }
+	    .m-btn  { align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); cursor: pointer; display: flex; flex-direction: column; font-family: inherit; gap: .3rem; padding: .9rem .5rem; transition: border-color .15s; }
 	    .m-btn:hover { border-color: var(--accent); }
 	    .m-avatar { font-size: 1.6rem; }
-	    .week-link { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); color: var(--dim); font-size: .8rem; text-decoration: none; letter-spacing: .08em; border-bottom: 1px solid var(--border); padding-bottom: 1px; }
+	    .week-link { border-bottom: 1px solid var(--border); color: var(--dim); display: inline-block; font-size: .85rem; letter-spacing: .08em; margin-top: 1.25rem; padding-bottom: 1px; text-decoration: none; }
 	    .week-link:hover { color: var(--muted); }
-	    .recipe-link { display: inline-block; margin-top: .9rem; color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(249,115,22,.35); padding-bottom: 1px; }
 		  </style>
 		</head>
 		<body data-nav-page="tonight" data-nav-root=".">
 	  <div id="app" class="tonight-route-shell">
-	  <div class="day">${safeDayName}</div>
-	  <div class="label">Tonight's Dinner</div>
+	  <div class="tn-card">
+	  <div class="tn-day">${safeDayName}</div>
+	  <div class="tn-label">Tonight's Dinner</div>
 
 	  ${isOrderIn ? `
-    <div class="meal">Order In Night 🛵</div>
-    <div class="sub">No cooking tonight — pick your spot</div>
+    <div class="tn-meal">Order In 🛵</div>
+    <div class="tn-sub">No cooking tonight — vote for where!</div>
     <div id="tonight-addon" class="addon${safeAddonNote ? '' : ' hidden'}">${safeAddonNote}</div>
     <div class="r-grid" id="r-grid"></div>
-    <div style="display:flex;gap:.5rem;max-width:360px;margin:.75rem auto 0;">
-      <input id="write-in-name" type="text" placeholder="Write-in restaurant"
-        style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:.55rem .6rem;">
-      <button class="r-btn" style="padding:.55rem .7rem" onclick="castWriteInVote()">Add</button>
+    <div class="tn-writein">
+      <input id="write-in-name" type="text" placeholder="Write-in restaurant">
+      <button type="button" onclick="castWriteInVote()">Add</button>
     </div>
 	  ` : `
-	    <div class="meal">${safeName}</div>
-	    <div class="meta">${safeCook} ${safeRating}</div>
+	    <div class="tn-meal">${safeName}</div>
+	    ${notes ? `<div class="tn-sub">${notes}</div>` : ''}
+	    <div class="tn-chips">
+	      ${safeCook ? `<span class="tn-chip big">${safeCook}</span>` : ''}
+	      ${ratingDesc ? `<span class="tn-chip">${safeRating} ${ratingDesc}</span>` : ''}
+	      ${timeChip ? `<span class="tn-chip">⏱ ${timeChip}</span>` : ''}
+	    </div>
 	    <div id="tonight-addon" class="addon${safeAddonNote ? '' : ' hidden'}">${safeAddonNote}</div>
-	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">open recipe →</a>` : ''}
+	    ${meal && meal.recipe_id ? `<a class="recipe-link" href="./recipes/${meal.recipe_id}">Open recipe →</a>` : ''}
 	    ${canVoteMeal ? `
-	      <div class="sub" style="margin-top:1rem;margin-bottom:.6rem">How did this one land?</div>
-      <div class="r-grid" id="meal-votes"></div>
-      <div class="sub" id="meal-vote-display" style="margin-top:.6rem;margin-bottom:0"></div>
+	      <div class="tn-section">How did this one land?</div>
+      <div class="react-row" id="meal-votes"></div>
+      <div class="react-display" id="meal-vote-display"></div>
     ` : ''}
   `}
+
+  </div>
 
   ${(isOrderIn || canVoteMeal) ? `
   <!-- Member picker overlay -->
@@ -1759,14 +1875,19 @@ app.get('/tonight', async (req, res) => {
       const grid = document.getElementById('r-grid');
       if (!grid) return;
       const mv = me ? v.find(r => r.voters && r.voters.includes(me.name)) : null;
-      grid.innerHTML = v.map(r => \`
-        <button class="r-btn\${mv && mv.id === r.id ? ' active' : ''}"
+      const topCount = Math.max(0, ...v.map(r => r.count || 0));
+      grid.innerHTML = v.map(r => {
+        const leading = topCount > 0 && r.count === topCount;
+        return \`
+        <button class="r-btn\${mv && mv.id === r.id ? ' active' : ''}\${leading ? ' leading' : ''}"
                 onclick="castOrderInVote(\${r.id})">
+          \${r.count > 0 ? \`<span class="r-count">\${r.count}</span>\` : ''}
+          \${leading ? '<span class="r-crown">👑</span>' : ''}
           <span class="r-emoji">\${r.emoji}</span>
           <span class="r-name">\${r.name}</span>
-          \${r.count > 0 ? \`<span class="r-count">\${r.count}</span>\` : ''}
           \${r.voters && r.voters.length ? \`<span class="r-voters">\${r.voters.join(', ')}</span>\` : ''}
-        </button>\`).join('');
+        </button>\`;
+      }).join('');
     }
 
     async function castOrderInVote(restaurantId) {
@@ -1807,11 +1928,8 @@ app.get('/tonight', async (req, res) => {
       const myVote = me ? votes.find(v => v.name === me.name) : null;
 
       grid.innerHTML = MEAL_REACTIONS.map(r => \`
-        <button class="r-btn\${myVote && myVote.reaction === r ? ' active' : ''}"
-                onclick="castMealVote('\${r}')">
-          <span class="r-emoji">\${r}</span>
-          <span class="r-name">React</span>
-        </button>\`).join('');
+        <button class="react-btn\${myVote && myVote.reaction === r ? ' active' : ''}"
+                onclick="castMealVote('\${r}')" aria-label="React \${r}">\${r}</button>\`).join('');
 
       const display = document.getElementById('meal-vote-display');
       if (display) {
@@ -1872,7 +1990,6 @@ app.get('/api/tonight', async (req, res) => {
     res.json({
       date: dateStr,
       day_name: now.toLocaleDateString('en-US', { weekday: 'long' }),
-      rotation_week: week.rotation_week,
       meal: today ? today.meal : null,
       order_in: today ? today.order_in : null,
     });
@@ -1892,6 +2009,113 @@ app.get('/api/week', async (req, res) => {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + (offsetWeeks * 7));
     res.json(await weekDataForDate(targetDate));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/plan?week_start=YYYY-MM-DD — week plan + rotation suggestions
+app.get('/api/plan', async (req, res) => {
+  try {
+    const weekStart = String(req.query?.week_start || '');
+    const target = weekStart
+      ? (isValidDateOnlyString(weekStart) ? parseDateOnly(weekStart) : null)
+      : new Date();
+    if (!target) return res.status(400).json({ error: 'week_start must be YYYY-MM-DD' });
+    res.json(await planForDate(target));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/plan/day — set or clear the planned meal for one date
+app.put('/api/plan/day', async (req, res) => {
+  const date = String(req.body?.date || '');
+  if (!isValidDateOnlyString(date)) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
+
+  const rawMealId = req.body?.meal_id;
+  const mealId = rawMealId === null || rawMealId === '' || rawMealId === undefined
+    ? null
+    : Number(rawMealId);
+  if (mealId !== null && (!Number.isInteger(mealId) || mealId < 1)) {
+    return res.status(400).json({ error: 'meal_id must be a valid meal id or null' });
+  }
+
+  try {
+    if (mealId !== null) {
+      const { rows } = await pool.query('SELECT 1 FROM meals WHERE id = $1', [mealId]);
+      if (!rows.length) return res.status(404).json({ error: 'meal not found' });
+    }
+    await upsertPlanDay(
+      date,
+      mealId,
+      req.body?.note ? String(req.body.note) : null,
+      req.body?.created_by ? String(req.body.created_by) : null
+    );
+    res.json({ success: true, date, meal: await mealForDate(parseDateOnly(date)) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/plan/autofill — fill a week from the rotation template or last week
+app.post('/api/plan/autofill', async (req, res) => {
+  const weekStart = String(req.body?.week_start || '');
+  if (!isValidDateOnlyString(weekStart)) {
+    return res.status(400).json({ error: 'week_start must be YYYY-MM-DD' });
+  }
+
+  const source = req.body?.source === 'previous_week' ? 'previous_week' : 'rotation';
+  const overwrite = Boolean(req.body?.overwrite);
+  const createdBy = req.body?.created_by ? String(req.body.created_by) : null;
+
+  try {
+    const monday = mondayOf(parseDateOnly(weekStart));
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday);
+      day.setDate(monday.getDate() + i);
+      dates.push(localDateString(day));
+    }
+
+    let sourceByIsoDay;
+    if (source === 'rotation') {
+      sourceByIsoDay = await rotationWeekSlots(monday);
+    } else {
+      const prevMonday = new Date(monday);
+      prevMonday.setDate(monday.getDate() - 7);
+      const prevSunday = new Date(prevMonday);
+      prevSunday.setDate(prevMonday.getDate() + 6);
+      const { rows } = await pool.query(
+        `SELECT p.plan_date, p.meal_id, EXTRACT(ISODOW FROM p.plan_date)::int AS day_of_week
+         FROM plan_days p
+         WHERE p.plan_date BETWEEN $1 AND $2 AND p.meal_id IS NOT NULL`,
+        [localDateString(prevMonday), localDateString(prevSunday)]
+      );
+      sourceByIsoDay = new Map(rows.map(row => [row.day_of_week, { id: row.meal_id }]));
+    }
+
+    const { rows: existingRows } = await pool.query(
+      'SELECT plan_date FROM plan_days WHERE plan_date BETWEEN $1 AND $2',
+      [dates[0], dates[6]]
+    );
+    const planned = new Set(existingRows.map(row => localDateString(parseDateOnly(row.plan_date))));
+
+    let filled = 0;
+    for (let i = 0; i < 7; i++) {
+      const dateStr = dates[i];
+      if (!overwrite && planned.has(dateStr)) continue;
+      const suggestion = sourceByIsoDay.get(i + 1);
+      if (!suggestion) continue;
+      await upsertPlanDay(dateStr, suggestion.id, null, createdBy);
+      filled++;
+    }
+
+    res.json({ success: true, filled, plan: await planForDate(monday) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -1940,6 +2164,23 @@ app.post('/api/recipes/import', async (req, res) => {
 
 app.get('/api/recipes', async (req, res) => {
   try {
+    const q = String(req.query?.q || '').trim();
+    const sort = String(req.query?.sort || 'title');
+    const orderBy = {
+      title: 'r.title',
+      newest: 'r.created_at DESC, r.title',
+      time: 'r.total_time_min NULLS LAST, r.title',
+    }[sort] || 'r.title';
+
+    const params = [];
+    let where = '';
+    if (q) {
+      params.push(`%${q}%`);
+      where = `WHERE r.title ILIKE $1
+                  OR r.description ILIKE $1
+                  OR EXISTS (SELECT 1 FROM unnest(r.tags) tag WHERE tag ILIKE $1)`;
+    }
+
     const { rows } = await pool.query(
       `SELECT r.id,
               r.title,
@@ -1971,7 +2212,9 @@ app.get('/api/recipes', async (req, res) => {
          FROM recipe_steps
          GROUP BY recipe_id
        ) step_counts ON step_counts.recipe_id = r.id
-       ORDER BY r.title`
+       ${where}
+       ORDER BY ${orderBy}`,
+      params
     );
 
     res.json(rows.map(row => ({
@@ -2090,7 +2333,29 @@ app.post('/api/recipes/:id/create-meal', async (req, res) => {
 // GET /api/meals — all meals (for swap dropdown)
 app.get('/api/meals', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, recipe_id, name, cook, kid_rating, is_protected FROM meals ORDER BY name');
+    const q = String(req.query?.q || '').trim();
+    const rawLimit = Number.parseInt(String(req.query?.limit || ''), 10);
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : null;
+
+    const params = [];
+    let where = '';
+    if (q) {
+      params.push(`%${q}%`);
+      where = `WHERE name ILIKE $1
+                  OR notes ILIKE $1
+                  OR EXISTS (SELECT 1 FROM unnest(tags) tag WHERE tag ILIKE $1)`;
+    }
+    if (limit) params.push(limit);
+
+    const { rows } = await pool.query(
+      `SELECT id, recipe_id, name, cook, kid_rating, is_protected, is_new,
+              active_time_min, total_time_min, tags
+       FROM meals
+       ${where}
+       ORDER BY name
+       ${limit ? `LIMIT $${params.length}` : ''}`,
+      params
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2173,27 +2438,11 @@ app.get('/api/rotation', async (req, res) => {
       }),
     }));
 
-    const todayMonday = mondayOf(new Date());
-    const weekOutlook = [];
-    for (let i = 0; i < 3; i++) {
-      const weekStartDate = new Date(todayMonday);
-      weekStartDate.setDate(todayMonday.getDate() + (i * 7));
-      const weekEndDate = new Date(weekStartDate);
-      weekEndDate.setDate(weekStartDate.getDate() + 6);
-      weekOutlook.push({
-        offset_weeks: i,
-        rotation_week: await rotationWeek(weekStartDate),
-        week_start: localDateString(weekStartDate),
-        week_end: localDateString(weekEndDate),
-      });
-    }
-
     res.json({
       rotation_start_date: config[0] ? config[0].value : null,
       weeks,
       meals,
       restaurants,
-      week_outlook: weekOutlook,
     });
   } catch (err) {
     console.error(err);
@@ -2338,6 +2587,7 @@ app.delete('/api/meals/:id', async (req, res) => {
   try {
     const usageChecks = await Promise.all([
       pool.query('SELECT 1 FROM meal_rotation WHERE meal_id = $1 LIMIT 1', [mealId]),
+      pool.query('SELECT 1 FROM plan_days WHERE meal_id = $1 LIMIT 1', [mealId]),
       pool.query('SELECT 1 FROM daily_overrides WHERE override_meal_id = $1 LIMIT 1', [mealId]),
       pool.query('SELECT 1 FROM cook_log WHERE meal_id = $1 OR planned_meal_id = $1 LIMIT 1', [mealId]),
       pool.query('SELECT 1 FROM meal_votes WHERE meal_id = $1 LIMIT 1', [mealId]),
@@ -2398,28 +2648,22 @@ app.put('/api/rotation-slot', async (req, res) => {
   }
 });
 
-// PUT /api/swap — swap a meal for a specific date
+// PUT /api/swap — set the planned meal for a specific date
 app.put('/api/swap', async (req, res) => {
   const { date, meal_id, note, created_by } = req.body;
   if (!date || !meal_id) return res.status(400).json({ error: 'date and meal_id required' });
   try {
-    await pool.query(
-      `INSERT INTO daily_overrides (override_date, override_meal_id, note, created_by)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (override_date)
-       DO UPDATE SET override_meal_id = $2, note = $3, updated_at = NOW()`,
-      [date, meal_id, note || null, created_by || null]
-    );
+    await upsertPlanDay(date, Number(meal_id), note || null, created_by || null);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/swap/:date — restore to rotation default
+// DELETE /api/swap/:date — clear the planned meal for a date
 app.delete('/api/swap/:date', async (req, res) => {
   try {
-    await pool.query('DELETE FROM daily_overrides WHERE override_date = $1', [req.params.date]);
+    await pool.query('DELETE FROM plan_days WHERE plan_date = $1', [req.params.date]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2790,6 +3034,10 @@ app.put('/api/tonight-addon/:date', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/plan', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'plan.html'));
 });
 
 app.get('/admin', (req, res) => {

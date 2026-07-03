@@ -819,3 +819,341 @@ body.app-has-nav .recipe-detail-page .admin-header {
     padding-right: 1.5rem;
   }
 }
+
+/* ── Plan the Week ─────────────────────────────────────────── */
+.plan-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0 1rem 0.75rem;
+}
+
+.plan-week-switch {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+}
+
+.plan-switch-btn {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .plan-switch-btn { padding: 0.45rem 0.6rem; }
+  .plan-arrow { padding: 0.4rem 0.55rem; }
+}
+
+.plan-switch-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plan-arrow {
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+}
+
+.plan-progress {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.plan-progress.done { color: var(--green); }
+
+.plan-autofill {
+  align-items: center;
+  background: var(--accent-panel-bg);
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin: 0 1rem 1rem;
+  padding: 0.9rem 1rem;
+}
+
+.plan-autofill-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.plan-autofill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.plan-days {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 1rem 2rem;
+}
+
+.plan-day {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 0.35rem 1rem;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  padding: 0.85rem 1rem;
+}
+
+.plan-day.today { border-color: var(--accent); }
+.plan-day.empty { border-style: dashed; }
+
+.plan-day-date {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.plan-day-name {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.plan-day.today .plan-day-name { color: var(--accent); }
+
+.plan-day-num {
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+
+.plan-today-tag {
+  color: var(--accent);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan-day-body {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.plan-meal-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.plan-meal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.plan-suggestion {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.plan-suggestion-use {
+  background: transparent;
+  border: 1px solid var(--accent-border-soft);
+  border-radius: 999px;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.6rem;
+}
+
+.plan-suggestion-use:hover { background: var(--accent-soft); }
+
+.plan-day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.plan-clear { color: var(--dim); }
+
+@media (max-width: 700px) {
+  .plan-day {
+    grid-template-columns: 3.6rem minmax(0, 1fr);
+  }
+
+  .plan-day-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+/* ── Meal picker overlay ───────────────────────────────────── */
+.mp-box {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 460px;
+  width: 100%;
+}
+
+.mp-head { display: grid; gap: 0.2rem; }
+
+#mp-search {
+  background: var(--surface2, var(--elevated-bg));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.75rem 0.9rem;
+  width: 100%;
+}
+
+#mp-search:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.mp-results {
+  display: grid;
+  gap: 0.4rem;
+  max-height: min(48vh, 420px);
+  overflow: auto;
+}
+
+.mp-item {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 0.3rem;
+  padding: 0.65rem 0.8rem;
+  text-align: left;
+}
+
+.mp-item:hover,
+.mp-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.mp-item.current { border-color: var(--accent-border-soft); }
+
+.mp-item-name { font-weight: 600; }
+
+.mp-current-tag {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mp-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.mp-chip {
+  background: var(--surface2, var(--elevated-bg));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding: 0.1rem 0.55rem;
+}
+
+.mp-empty { padding: 0.75rem 0.25rem; }
+
+.mp-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* ── Recipe browser cards ──────────────────────────────────── */
+.recipe-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.recipe-toolbar .meal-search {
+  flex: 1;
+  margin-bottom: 0;
+  min-width: 220px;
+}
+
+.recipe-sort {
+  background: var(--surface2, var(--elevated-bg));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.7rem 0.8rem;
+}
+
+.recipe-count {
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.recipe-card-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.recipe-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+
+.recipe-card:hover { border-color: var(--accent); }
+
+.recipe-card-title {
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.recipe-card-desc {
+  color: var(--muted);
+  display: -webkit-box;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.recipe-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}

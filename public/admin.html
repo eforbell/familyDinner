@@ -16,18 +16,18 @@
   <div id="app" class="admin-app">
     <header class="admin-header">
       <div>
-        <div class="week-badge">Planner</div>
-        <h1>3-Week Dinner Plan</h1>
+        <div class="week-badge">Settings</div>
+        <h1>Rotation Template</h1>
       </div>
       <div class="admin-header-actions">
+        <a class="btn-ghost" href="plan">Plan the week</a>
         <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
       </div>
     </header>
 
     <section class="admin-intro">
-      <p class="admin-copy">This page edits the repeating 3-week rotation directly. Changes here affect future weeks that use the same slot.</p>
+      <p class="admin-copy">This template only feeds the <strong>Fill from rotation</strong> button on the Plan page. Editing it never changes a week that's already planned.</p>
       <p id="rotation-meta" class="muted">Loading rotation…</p>
-      <div id="planner-week-outlook" class="planner-week-outlook"></div>
       <p id="rotation-status" class="admin-status hidden"></p>
     </section>
 

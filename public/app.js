@@ -2,9 +2,7 @@
 let currentMember = JSON.parse(localStorage.getItem('fd_member') || 'null');
 let weekData      = null;
 let todayWeekData = null;
-let allMeals      = [];
 let membersCache  = [];
-let swapTarget    = null;
 let todayDate     = null;
 let tonightMealId = null;
 let weekOffset    = 0;
@@ -47,27 +45,20 @@ async function loadWeek() {
   }
 }
 
-async function loadAllMeals() {
-  if (allMeals.length) return allMeals;
-  try {
-    const res = await fetch('api/meals');
-    allMeals  = await res.json();
-    return allMeals;
-  } catch (e) {
-    console.error('Failed to load meals', e);
-    return [];
-  }
-}
-
 // ── Render: Week Badge ────────────────────────────────────────
 function renderWeekBadge() {
   if (!weekData) return;
   const span = weekData.week_start
-    ? ` · ${fmtMonthDay(weekData.week_start)}–${fmtMonthDay(weekData.days && weekData.days[6] ? weekData.days[6].date : weekData.week_start)}`
+    ? `${fmtMonthDay(weekData.week_start)} – ${fmtMonthDay(weekData.days && weekData.days[6] ? weekData.days[6].date : weekData.week_start)}`
     : '';
-  document.getElementById('week-badge').textContent = `Week ${weekData.rotation_week} of 3${span}`;
+  document.getElementById('week-badge').textContent = span;
   const title = document.getElementById('week-section-title');
-  if (title) title.textContent = weekOffset === 0 ? 'This Week' : (weekOffset > 0 ? `Week +${weekOffset}` : `Week ${weekOffset}`);
+  if (title) {
+    title.textContent = weekOffset === 0 ? 'This Week'
+      : weekOffset === 1 ? 'Next Week'
+      : weekOffset === -1 ? 'Last Week'
+      : (weekOffset > 0 ? `Week +${weekOffset}` : `Week ${weekOffset}`);
+  }
 }
 
 // ── Render: Tonight ───────────────────────────────────────────
@@ -201,7 +192,6 @@ function buildDayCard(day) {
   const metaHtml = meal && !isOrderIn
     ? `<span style="font-size:1rem">${meal.cook || ''}</span>
        <span style="font-size:0.95rem">${ratingEmoji(meal.kid_rating)}</span>
-       ${meal.is_override ? '<span class="override-badge">swapped</span>' : ''}
        ${meal.is_new ? '<span class="new-badge">★ NEW</span>' : ''}`
     : '';
 
@@ -246,7 +236,16 @@ function buildDayExpandHtml(day) {
     return `<p class="muted" style="font-size:.85rem;margin-bottom:.75rem">Protected night — no cooking.</p>`;
   }
 
-  if (!meal) return '<p class="muted" style="font-size:.85rem">Nothing planned.</p>';
+  if (!meal) {
+    return `
+      <p class="muted" style="font-size:.85rem;margin-bottom:.75rem">Nothing planned yet.</p>
+      <div class="day-actions">
+        <button class="btn-swap" onclick="openSwap('${day.date}')">Pick a meal</button>
+        <a class="btn-ghost" href="plan">Plan the week</a>
+        <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
+      </div>
+    `;
+  }
 
   const notes  = meal.notes       ? `<div class="day-notes">${esc(meal.notes)}</div>` : '';
   const tips   = meal.recipe_tips ? `<div class="day-tips">${esc(meal.recipe_tips)}</div>` : '';
@@ -262,7 +261,7 @@ function buildDayExpandHtml(day) {
     <div class="day-actions" style="margin-top:.75rem">
       <div class="vote-buttons" id="day-votes-${day.date}"></div>
       ${meal.recipe_id ? `<a class="btn-ghost" href="recipes/${meal.recipe_id}">Recipe</a>` : ''}
-      <button class="btn-swap" onclick="openSwap('${day.date}', 'day')">Swap ⇄</button>
+      <button class="btn-swap" onclick="openSwap('${day.date}')">Swap ⇄</button>
       <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
     </div>
     <div class="day-vote-display" id="day-vote-display-${day.date}"></div>
@@ -353,64 +352,39 @@ function toggleTonightDetails() {
     tonightDetailsOpen ? 'Details ▴' : 'Details ▾';
 }
 
-// ── Swap Modal ────────────────────────────────────────────────
-async function openSwap(date, context) {
-  swapTarget = { date, context };
-  const overlay = document.getElementById('swap-overlay');
-  overlay.classList.remove('hidden');
-
+// ── Swap (searchable meal picker) ─────────────────────────────
+function openSwap(date) {
   const d = new Date(date + 'T12:00:00');
-  document.getElementById('swap-day-label').textContent =
-    d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dayLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dayEntry = weekData && weekData.days.find(entry => entry.date === date);
+  const currentMealId = dayEntry && dayEntry.meal ? dayEntry.meal.id : null;
 
-  await loadAllMeals();
-  const sel = document.getElementById('swap-select');
-  sel.innerHTML = allMeals
-    .filter(m => !m.is_protected)
-    .map(m => `<option value="${m.id}">${m.name}</option>`)
-    .join('');
-
-  // Pre-select current meal for this date
-  const dayEntry = weekData && weekData.days.find(d => d.date === date);
-  if (dayEntry && dayEntry.meal) {
-    sel.value = dayEntry.meal.id;
-  }
-}
-
-function closeSwap() {
-  document.getElementById('swap-overlay').classList.add('hidden');
-  swapTarget = null;
-}
-
-async function confirmSwap() {
-  if (!swapTarget) return;
-  const mealId = document.getElementById('swap-select').value;
-  try {
-    await fetch('api/swap', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date: swapTarget.date,
-        meal_id: mealId,
-        created_by: currentMember ? currentMember.name : null,
-      }),
-    });
-    closeSwap();
-    await loadWeek();
-  } catch (e) {
-    console.error('Swap failed', e);
-  }
-}
-
-async function resetSwap() {
-  if (!swapTarget) return;
-  try {
-    await fetch(`api/swap/${swapTarget.date}`, { method: 'DELETE' });
-    closeSwap();
-    await loadWeek();
-  } catch (e) {
-    console.error('Reset failed', e);
-  }
+  MealPicker.open({
+    title: `Dinner for ${dayLabel}`,
+    subtitle: 'Search the meal library, or clear the day.',
+    currentMealId,
+    allowClear: Boolean(currentMealId),
+    onSelect: async meal => {
+      try {
+        if (meal) {
+          await fetch('api/swap', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date,
+              meal_id: meal.id,
+              created_by: currentMember ? currentMember.name : null,
+            }),
+          });
+        } else {
+          await fetch(`api/swap/${date}`, { method: 'DELETE' });
+        }
+        await loadWeek();
+      } catch (e) {
+        console.error('Swap failed', e);
+      }
+    },
+  });
 }
 
 // ── Member Picker ─────────────────────────────────────────────
@@ -721,7 +695,6 @@ function buildMetaBadges(meal) {
     meal.cook        ? `<span class="cook-badge">${meal.cook}</span>` : '',
     meal.kid_rating  ? `<span class="kid-badge ${cls}" title="${desc}">${ratingEmoji(meal.kid_rating)} ${desc}</span>` : '',
     meal.is_new      ? '<span class="new-badge">★ NEW</span>' : '',
-    meal.is_override ? '<span class="override-badge">swapped</span>' : '',
   ].filter(Boolean).join('');
 }
 

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f0f0f">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Dinner 🍽️</title>
@@ -27,20 +28,6 @@
       <h2>Who are you?</h2>
       <p>Pick your profile to vote on meals.</p>
       <div id="member-list"></div>
-    </div>
-  </div>
-
-  <!-- Swap modal -->
-  <div id="swap-overlay" class="overlay hidden">
-    <div class="overlay-box">
-      <h2>Swap Meal</h2>
-      <p id="swap-day-label" class="muted"></p>
-      <select id="swap-select"></select>
-      <div class="overlay-actions">
-        <button id="swap-confirm-btn" class="btn-primary" onclick="confirmSwap()">Swap</button>
-        <button class="btn-ghost" onclick="closeSwap()">Cancel</button>
-        <button class="btn-danger" onclick="resetSwap()">Reset to default</button>
-      </div>
     </div>
   </div>
 
@@ -120,6 +107,7 @@
 
   <script src="theme.js"></script>
   <script src="nav.js"></script>
+  <script src="meal-picker.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
