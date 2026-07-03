@@ -80,36 +80,65 @@ function renderTonight() {
   document.getElementById('tonight-day').textContent =
     new Date(today.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  if (!meal) {
-    const recipeLink = document.getElementById('tonight-recipe-link');
+  const orderIn = today.order_in;
+  const recipeLink = document.getElementById('tonight-recipe-link');
+  const actions = document.querySelector('.tonight-actions');
+  const details = document.getElementById('tonight-details');
+  const detailsBtn = document.getElementById('tonight-details-btn');
+
+  if (actions) actions.classList.remove('hidden');
+  if (detailsBtn) detailsBtn.classList.remove('hidden');
+
+  if (orderIn) {
     if (recipeLink) recipeLink.classList.add('hidden');
+    document.getElementById('tonight-name').textContent = 'Order In Night 🛵';
+    document.getElementById('tonight-notes').textContent = 'No cooking tonight — vote for where to order.';
+    document.getElementById('tonight-meta').innerHTML = '';
+    if (actions) actions.classList.add('hidden');
+    if (details) details.classList.remove('hidden');
+    if (detailsBtn) detailsBtn.classList.add('hidden');
+    document.getElementById('tonight-tips').innerHTML = '';
+    document.getElementById('tonight-timing').innerHTML = '';
+    document.getElementById('tonight-equipment').textContent = '';
+    renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, orderIn);
+    renderTonightScratchpad();
+    return;
+  }
+
+  if (!meal) {
+    if (recipeLink) recipeLink.classList.add('hidden');
+    if (actions) actions.classList.add('hidden');
     document.getElementById('tonight-name').textContent = 'Nothing planned';
+    document.getElementById('tonight-notes').textContent = '';
+    document.getElementById('tonight-meta').innerHTML = '';
+    document.getElementById('tonight-tips').innerHTML = '';
+    document.getElementById('tonight-timing').innerHTML = '';
+    document.getElementById('tonight-equipment').textContent = '';
+    renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, null);
     renderTonightScratchpad();
     return;
   }
 
   tonightMealId = meal.id;
 
-  const orderIn = today.order_in;
-  const recipeLink = document.getElementById('tonight-recipe-link');
   if (recipeLink) {
     recipeLink.classList.toggle('hidden', !meal.recipe_id);
     if (meal.recipe_id) recipeLink.href = `recipes/${meal.recipe_id}`;
   }
 
-  if (orderIn || (meal && meal.is_protected)) {
+  if (meal && meal.is_protected) {
     if (recipeLink) recipeLink.classList.add('hidden');
     document.getElementById('tonight-name').textContent = 'Order In Night 🛵';
     document.getElementById('tonight-notes').textContent = 'No cooking tonight — vote for where to order.';
     document.getElementById('tonight-meta').innerHTML = '';
-    document.querySelector('.tonight-actions').classList.add('hidden');
+    if (actions) actions.classList.add('hidden');
     // Show restaurant voting in the details panel
-    document.getElementById('tonight-details').classList.remove('hidden');
-    document.getElementById('tonight-details-btn').classList.add('hidden');
+    if (details) details.classList.remove('hidden');
+    if (detailsBtn) detailsBtn.classList.add('hidden');
     document.getElementById('tonight-tips').innerHTML = '';
     document.getElementById('tonight-timing').innerHTML = '';
     document.getElementById('tonight-equipment').textContent = '';
-    renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, orderIn);
+    renderRestaurantVotes('tonight-votes', 'tonight-vote-display', today.date, today.order_in);
     renderTonightScratchpad();
     return;
   }
@@ -562,12 +591,13 @@ function buildRestaurantVotesHtml(orderIn, date, scope = 'day') {
     <div class="restaurant-grid">
       ${voteData.map(r => {
         const isMyVote = myVote && myVote.id === r.id;
+        const voters = Array.isArray(r.voters) ? r.voters.map(esc).join(', ') : '';
         return `<button class="restaurant-btn${isMyVote ? ' active' : ''}"
                   onclick="voteRestaurant('${date}', ${r.id})">
-          <span class="r-emoji">${r.emoji}</span>
+          <span class="r-emoji">${esc(r.emoji || '')}</span>
           <span class="r-name">${esc(r.name)}</span>
           ${r.count > 0 ? `<span class="r-count">${r.count}</span>` : ''}
-          ${r.voters && r.voters.length ? `<span class="r-voters">${r.voters.join(', ')}</span>` : ''}
+          ${voters ? `<span class="r-voters">${voters}</span>` : ''}
         </button>`;
       }).join('')}
     </div>

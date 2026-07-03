@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { app } = require('../server');
+const { app, pool } = require('../server');
+
+const ORIGINAL_QUERY = pool.query.bind(pool);
 
 test('recipe browser stays focused on browsing while builder stays separate', async (t) => {
   const server = app.listen(0, '127.0.0.1');
@@ -70,4 +72,48 @@ test('recipe browser and builder scripts use relative app paths for subpath depl
   assert.match(builderScript, /history\.replaceState\(null, '', `recipes\?recipeId=\$\{recipe\.id\}`\)/);
   assert.match(builderScript, /viewLink\.href = `\.\.\/recipes\/\$\{selectedRecipeId\}`/);
   assert.match(builderHtml, /href="\.\.\/recipes"/);
+});
+
+test('recipe API search includes ingredient text promised by the browser', async (t) => {
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const address = server.address();
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  t.after(async () => {
+    pool.query = ORIGINAL_QUERY;
+    await new Promise(resolve => server.close(resolve));
+  });
+
+  let capturedSql = '';
+  let capturedParams = [];
+  pool.query = async (sql, params = []) => {
+    capturedSql = sql;
+    capturedParams = params;
+    return {
+      rows: [{
+        id: 1,
+        title: 'Weeknight Pasta',
+        description: null,
+        source_url: null,
+        source_domain: null,
+        total_time_min: 20,
+        tags: [],
+        created_at: new Date(),
+        linked_meal_id: null,
+        linked_meal_name: null,
+        ingredient_count: 1,
+        step_count: 1,
+      }],
+    };
+  };
+
+  const res = await fetch(`${baseUrl}/api/recipes?q=tomato`);
+  const data = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(data[0].title, 'Weeknight Pasta');
+  assert.match(capturedSql, /recipe_ingredients/i);
+  assert.match(capturedSql, /display_text ILIKE \$1/i);
+  assert.deepEqual(capturedParams, ['%tomato%']);
 });

@@ -320,6 +320,15 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function safeScriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 async function getAppConfigValue(key, fallback = null, queryable = pool) {
   const { rows } = await queryable.query('SELECT value FROM app_config WHERE key = $1', [key]);
   return rows.length ? rows[0].value : fallback;
@@ -1643,7 +1652,7 @@ app.get('/tonight', async (req, res) => {
           : `${meal.total_time_min}m`)
       : '';
     // Embed restaurants + current votes as JSON for the client script
-    const votesJson = JSON.stringify(orderIn ? orderIn.votes : []);
+    const votesJson = safeScriptJson(orderIn ? orderIn.votes : []);
 
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -1880,6 +1889,15 @@ app.get('/tonight', async (req, res) => {
       if (MEAL_ID && document.getElementById('meal-votes')) renderMealVotes();
     }
 
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderOrderInGrid(v) {
       const grid = document.getElementById('r-grid');
       if (!grid) return;
@@ -1887,14 +1905,15 @@ app.get('/tonight', async (req, res) => {
       const topCount = Math.max(0, ...v.map(r => r.count || 0));
       grid.innerHTML = v.map(r => {
         const leading = topCount > 0 && r.count === topCount;
+        const voters = Array.isArray(r.voters) ? r.voters.map(escapeHtml).join(', ') : '';
         return \`
         <button class="r-btn\${mv && mv.id === r.id ? ' active' : ''}\${leading ? ' leading' : ''}"
                 onclick="castOrderInVote(\${r.id})">
           \${r.count > 0 ? \`<span class="r-count">\${r.count}</span>\` : ''}
           \${leading ? '<span class="r-crown">👑</span>' : ''}
-          <span class="r-emoji">\${r.emoji}</span>
-          <span class="r-name">\${r.name}</span>
-          \${r.voters && r.voters.length ? \`<span class="r-voters">\${r.voters.join(', ')}</span>\` : ''}
+          <span class="r-emoji">\${escapeHtml(r.emoji || '')}</span>
+          <span class="r-name">\${escapeHtml(r.name)}</span>
+          \${voters ? \`<span class="r-voters">\${voters}</span>\` : ''}
         </button>\`;
       }).join('');
     }
@@ -1964,8 +1983,8 @@ app.get('/tonight', async (req, res) => {
       picker.classList.remove('hidden');
       grid.innerHTML = members.map(m => \`
         <button class="m-btn" onclick="pickMember(\${m.id})">
-          <span class="m-avatar">\${m.avatar_emoji}</span>
-          <span>\${m.name}</span>
+          <span class="m-avatar">\${escapeHtml(m.avatar_emoji || '')}</span>
+          <span>\${escapeHtml(m.name)}</span>
         </button>\`).join('');
       picker._cb = cb;
     }
@@ -2109,10 +2128,16 @@ app.post('/api/plan/autofill', async (req, res) => {
     }
 
     const { rows: existingRows } = await pool.query(
-      'SELECT plan_date FROM plan_days WHERE plan_date BETWEEN $1 AND $2',
+      `SELECT plan_date AS date_to_skip
+       FROM plan_days
+       WHERE plan_date BETWEEN $1 AND $2
+       UNION
+       SELECT order_date AS date_to_skip
+       FROM order_in_nights
+       WHERE order_date BETWEEN $1 AND $2`,
       [dates[0], dates[6]]
     );
-    const planned = new Set(existingRows.map(row => localDateString(parseDateOnly(row.plan_date))));
+    const planned = new Set(existingRows.map(row => localDateString(parseDateOnly(row.date_to_skip))));
 
     let filled = 0;
     for (let i = 0; i < 7; i++) {
@@ -2187,7 +2212,17 @@ app.get('/api/recipes', async (req, res) => {
       params.push(`%${q}%`);
       where = `WHERE r.title ILIKE $1
                   OR r.description ILIKE $1
-                  OR EXISTS (SELECT 1 FROM unnest(r.tags) tag WHERE tag ILIKE $1)`;
+                  OR EXISTS (SELECT 1 FROM unnest(r.tags) tag WHERE tag ILIKE $1)
+                  OR EXISTS (
+                    SELECT 1
+                    FROM recipe_ingredients ri
+                    WHERE ri.recipe_id = r.id
+                      AND (
+                        ri.display_text ILIKE $1
+                        OR ri.ingredient_text ILIKE $1
+                        OR ri.prep_note ILIKE $1
+                      )
+                  )`;
     }
 
     const { rows } = await pool.query(
@@ -2660,9 +2695,17 @@ app.put('/api/rotation-slot', async (req, res) => {
 // PUT /api/swap — set the planned meal for a specific date
 app.put('/api/swap', async (req, res) => {
   const { date, meal_id, note, created_by } = req.body;
-  if (!date || !meal_id) return res.status(400).json({ error: 'date and meal_id required' });
+  if (!isValidDateOnlyString(String(date || ''))) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
+  const mealId = Number(meal_id);
+  if (!Number.isInteger(mealId) || mealId < 1) {
+    return res.status(400).json({ error: 'meal_id must be a valid meal id' });
+  }
   try {
-    await upsertPlanDay(date, Number(meal_id), note || null, created_by || null);
+    const { rows } = await pool.query('SELECT 1 FROM meals WHERE id = $1', [mealId]);
+    if (!rows.length) return res.status(404).json({ error: 'meal not found' });
+    await upsertPlanDay(date, mealId, note || null, created_by || null);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2671,6 +2714,9 @@ app.put('/api/swap', async (req, res) => {
 
 // DELETE /api/swap/:date — clear the planned meal for a date
 app.delete('/api/swap/:date', async (req, res) => {
+  if (!isValidDateOnlyString(String(req.params.date || ''))) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
   try {
     await pool.query('DELETE FROM plan_days WHERE plan_date = $1', [req.params.date]);
     res.json({ success: true });
@@ -3113,5 +3159,6 @@ module.exports = {
   renderRecipeDetailPage,
   resolveDayOrderIn,
   resolveMealVoteDate,
+  safeScriptJson,
   serializeRestaurantOptions,
 };
