@@ -55,6 +55,13 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_RECIPE_MODEL = process.env.OPENAI_RECIPE_MODEL || OPENAI_MODEL;
 // GPT-5.1+ dropped 'minimal'; 'none' is the replacement for reasoning-off.
 const OPENAI_REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT || 'none';
+
+// gpt-4o/gpt-4/gpt-3.5 reject the reasoning_effort param outright, so only
+// send it to models that understand it (o-series and gpt-5+).
+function reasoningParamsFor(model) {
+  const supportsReasoning = /^(o\d|gpt-5)/.test(String(model || ''));
+  return supportsReasoning ? { reasoning_effort: OPENAI_REASONING_EFFORT } : {};
+}
 const RECIPE_IMPORT_USER_AGENT = process.env.RECIPE_IMPORT_USER_AGENT || [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
   'AppleWebKit/537.36 (KHTML, like Gecko)',
@@ -793,7 +800,7 @@ async function generateRecipeImportDraft(sourceUrl) {
       },
       body: JSON.stringify({
         model: OPENAI_RECIPE_MODEL,
-        reasoning_effort: OPENAI_REASONING_EFFORT,
+        ...reasoningParamsFor(OPENAI_RECIPE_MODEL),
         max_completion_tokens: 2200,
         response_format: createRecipeResponseSchema(),
         messages: [
@@ -982,7 +989,7 @@ async function generateMagicMeal(requestNotes = '') {
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      reasoning_effort: OPENAI_REASONING_EFFORT,
+      ...reasoningParamsFor(OPENAI_MODEL),
       max_completion_tokens: 1600,
       response_format: {
         type: 'json_schema',
@@ -1161,7 +1168,7 @@ async function generateMagicGroceryList(targetDate, requestNotes = '') {
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      reasoning_effort: OPENAI_REASONING_EFFORT,
+      ...reasoningParamsFor(OPENAI_MODEL),
       max_completion_tokens: 2200,
       response_format: {
         type: 'json_schema',
@@ -3102,6 +3109,7 @@ module.exports = {
   normalizeRestaurantKey,
   parseDateOnly,
   parseRestaurantOptionsInput,
+  reasoningParamsFor,
   renderRecipeDetailPage,
   resolveDayOrderIn,
   resolveMealVoteDate,

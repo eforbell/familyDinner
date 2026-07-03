@@ -7,10 +7,19 @@ const {
   escapeHtml,
   mergeRestaurantVoteRows,
   parseRestaurantOptionsInput,
+  reasoningParamsFor,
   renderRecipeDetailPage,
   resolveDayOrderIn,
   serializeRestaurantOptions,
 } = require('../server');
+
+test('reasoningParamsFor only sends reasoning_effort to models that accept it', () => {
+  assert.deepEqual(reasoningParamsFor('gpt-5.4-nano'), { reasoning_effort: 'none' });
+  assert.deepEqual(reasoningParamsFor('o3-mini'), { reasoning_effort: 'none' });
+  assert.deepEqual(reasoningParamsFor('gpt-4o'), {});
+  assert.deepEqual(reasoningParamsFor('gpt-4o-mini'), {});
+  assert.deepEqual(reasoningParamsFor(''), {});
+});
 
 test('escapeHtml escapes dangerous HTML characters for server-rendered templates', () => {
   assert.equal(
