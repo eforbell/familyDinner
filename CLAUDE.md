@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Family dinner "what's for dinner tonight?" app — LAN-hosted on a Linux server. Kids get a link, see tonight's meal. Built on a 3-week rotating menu from `family_menu.docx`.
+Family dinner "what's for dinner tonight?" app — LAN-hosted on a Linux server. Kids get a link, see tonight's meal. Weeks are planned explicitly on the Plan page (`/plan`); a legacy 3-week rotation template survives only as an autofill source.
 
 Family: Eric (Dad, main cook), Alex (Mom, project meals when energy allows — she has cancer, so energy flagging matters), Son (hates leftovers), Daughter (picky eater).
 
@@ -41,9 +41,10 @@ public/
 
 ### Key Data Model Concepts
 
-- **meal_rotation** — 21-row template (3 weeks × 7 days), references `meals.id`
-- **daily_overrides** — per-date meal swaps; takes precedence over rotation
-- **app_config** `rotation_start_date` — a Monday; rotation week is computed as `weeks_since_start % 3`
+- **plan_days** — canonical per-date meal plan (`plan_date` PK → `meals.id`). All week/tonight reads resolve from here; nothing falls back to the rotation at runtime.
+- **meal_rotation** — 21-row template (3 weeks × 7 days). Only consumed by the Plan page's "Fill from rotation" autofill and per-day suggestions.
+- **daily_overrides** — retired; data preserved but no longer read (migration 006 folded it into `plan_days`).
+- **app_config** `rotation_start_date` — a Monday; template week is computed as `weeks_since_start % 3` so autofill knows which template week matches a calendar week
 - **val_energy** — weekly energy level (1–5) for suggesting project vs. easy meals
 - **meal_votes** — scoped to `week_context` (Monday of the week), one reaction per person per meal per week
 
@@ -53,9 +54,12 @@ public/
 |-------|---------|
 | `GET /tonight` | Simple HTML display page — for Raspberry Pi / home screen shortcut |
 | `GET /api/tonight` | JSON for integrations |
-| `GET /api/week` | Full week with overrides resolved |
-| `PUT /api/swap` | Override a day's meal (body: `{ date, meal_id }`) |
-| `DELETE /api/swap/:date` | Restore rotation default |
+| `GET /api/week` | Full week resolved from `plan_days` |
+| `GET /api/plan?week_start=` | Week plan + per-day rotation suggestions (Plan page) |
+| `PUT /api/plan/day` | Set/clear one day (`{ date, meal_id\|null }`) |
+| `POST /api/plan/autofill` | Fill empty days (`{ week_start, source: rotation\|previous_week }`) |
+| `PUT /api/swap` | Legacy alias — sets a day's meal in `plan_days` |
+| `DELETE /api/swap/:date` | Clear the day |
 | `POST /api/vote` | React to a meal (`{ meal_id, member_id, reaction }`) |
 | `POST /api/energy` | Mom's weekly energy flag (`{ energy_level: 1-5 }`) |
 | `POST /api/log` | Record what actually got cooked |
@@ -70,7 +74,7 @@ Member identity persists in `localStorage` as `fd_member`. On first visit, a mem
 
 ## Meals
 
-17 meals in the rotation. 7 marked `is_new = true` (★ NEW in the doc). 1 protected (`Thursday Night Out`, `is_protected = true`) used for all three Thursday slots. Meals shared across weeks (e.g., Carne Asada Tacos appears in W2 Mon and W3 Tue) reference the same `meals.id`.
+The meal library is the picker's source (`GET /api/meals?q=` supports server-side search). Protected meals (`is_protected = true`, e.g. `Thursday Night Out`) render as order-in nights and are excluded from the picker. `public/meal-picker.js` is the shared searchable picker used by the Week page swap and the Plan page.
 
 ## Deployment Notes (Linux LAN)
 

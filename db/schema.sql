@@ -88,7 +88,17 @@ CREATE TABLE IF NOT EXISTS meal_rotation (
   UNIQUE(week_number, day_of_week)
 );
 
--- Per-date meal overrides (anyone swapping things around)
+-- Canonical per-date meal plan. Weeks are planned explicitly; the rotation
+-- above is only an autofill template.
+CREATE TABLE IF NOT EXISTS plan_days (
+  plan_date  DATE PRIMARY KEY,
+  meal_id    INTEGER REFERENCES meals(id),
+  note       TEXT,
+  created_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Legacy per-date meal overrides (retired — superseded by plan_days)
 CREATE TABLE IF NOT EXISTS daily_overrides (
   id               SERIAL PRIMARY KEY,
   override_date    DATE NOT NULL UNIQUE,

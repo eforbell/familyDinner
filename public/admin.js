@@ -30,12 +30,10 @@ function renderRotation() {
 
   const meta = document.getElementById('rotation-meta');
   if (rotationData.rotation_start_date) {
-    meta.textContent = `Week 1 starts on ${fmtDate(rotationData.rotation_start_date)}. The plan repeats every 3 weeks from there.`;
+    meta.textContent = `The template cycles every 3 weeks (Week 1 anchored to ${fmtDate(rotationData.rotation_start_date)}), so autofill knows which template week matches a given calendar week.`;
   } else {
     meta.textContent = 'No rotation start date is set.';
   }
-
-  renderWeekOutlook();
 
   const grid = document.getElementById('rotation-grid');
   grid.innerHTML = rotationData.weeks.map(week => `
@@ -49,21 +47,6 @@ function renderRotation() {
       </div>
     </section>
   `).join('');
-}
-
-function renderWeekOutlook() {
-  const wrap = document.getElementById('planner-week-outlook');
-  if (!wrap) return;
-  const outlook = Array.isArray(rotationData.week_outlook) ? rotationData.week_outlook : [];
-  if (!outlook.length) {
-    wrap.innerHTML = '';
-    return;
-  }
-
-  wrap.innerHTML = outlook.map(entry => {
-    const label = entry.offset_weeks === 0 ? 'This week' : `Week +${entry.offset_weeks}`;
-    return `<div><strong>${label}:</strong> Week ${entry.rotation_week} · ${fmtDateShort(entry.week_start)} → ${fmtDateShort(entry.week_end)}</div>`;
-  }).join('');
 }
 
 function buildSlotHtml(weekNumber, day) {
@@ -203,13 +186,6 @@ function fmtDate(dateStr) {
 
 function dayName(dayOfWeek) {
   return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][dayOfWeek - 1] || '';
-}
-
-function fmtDateShort(dateStr) {
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 function kidRatingClass(rating) {

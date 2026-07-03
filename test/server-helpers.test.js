@@ -7,10 +7,20 @@ const {
   escapeHtml,
   mergeRestaurantVoteRows,
   parseRestaurantOptionsInput,
+  reasoningParamsFor,
   renderRecipeDetailPage,
   resolveDayOrderIn,
   serializeRestaurantOptions,
+  safeScriptJson,
 } = require('../server');
+
+test('reasoningParamsFor only sends reasoning_effort to models that accept it', () => {
+  assert.deepEqual(reasoningParamsFor('gpt-5.4-nano'), { reasoning_effort: 'none' });
+  assert.deepEqual(reasoningParamsFor('o3-mini'), { reasoning_effort: 'none' });
+  assert.deepEqual(reasoningParamsFor('gpt-4o'), {});
+  assert.deepEqual(reasoningParamsFor('gpt-4o-mini'), {});
+  assert.deepEqual(reasoningParamsFor(''), {});
+});
 
 test('escapeHtml escapes dangerous HTML characters for server-rendered templates', () => {
   assert.equal(
@@ -21,6 +31,21 @@ test('escapeHtml escapes dangerous HTML characters for server-rendered templates
     escapeHtml('" onclick="evil()'),
     '&quot; onclick=&quot;evil()'
   );
+});
+
+test('safeScriptJson prevents stored values from breaking out of inline scripts', () => {
+  const serialized = safeScriptJson({
+    name: '</script><script>alert("x")</script>',
+    voters: ['Alex & Sam'],
+  });
+
+  assert.doesNotMatch(serialized, /<\/script>/i);
+  assert.ok(serialized.includes('\\u003c/script\\u003e'));
+  assert.ok(serialized.includes('\\u0026'));
+  assert.deepEqual(JSON.parse(serialized), {
+    name: '</script><script>alert("x")</script>',
+    voters: ['Alex & Sam'],
+  });
 });
 
 test('renderRecipeDetailPage injects recipe-specific title and metadata', () => {
