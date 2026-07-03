@@ -53,6 +53,8 @@ const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_RECIPE_MODEL = process.env.OPENAI_RECIPE_MODEL || OPENAI_MODEL;
+// GPT-5.1+ dropped 'minimal'; 'none' is the replacement for reasoning-off.
+const OPENAI_REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT || 'none';
 const RECIPE_IMPORT_USER_AGENT = process.env.RECIPE_IMPORT_USER_AGENT || [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
   'AppleWebKit/537.36 (KHTML, like Gecko)',
@@ -791,7 +793,7 @@ async function generateRecipeImportDraft(sourceUrl) {
       },
       body: JSON.stringify({
         model: OPENAI_RECIPE_MODEL,
-        reasoning_effort: 'minimal',
+        reasoning_effort: OPENAI_REASONING_EFFORT,
         max_completion_tokens: 2200,
         response_format: createRecipeResponseSchema(),
         messages: [
@@ -980,7 +982,7 @@ async function generateMagicMeal(requestNotes = '') {
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      reasoning_effort: 'minimal',
+      reasoning_effort: OPENAI_REASONING_EFFORT,
       max_completion_tokens: 1600,
       response_format: {
         type: 'json_schema',
@@ -1159,7 +1161,7 @@ async function generateMagicGroceryList(targetDate, requestNotes = '') {
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      reasoning_effort: 'minimal',
+      reasoning_effort: OPENAI_REASONING_EFFORT,
       max_completion_tokens: 2200,
       response_format: {
         type: 'json_schema',
