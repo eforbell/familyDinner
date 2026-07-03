@@ -63,3 +63,17 @@ test('Recipe Builder links to AI settings instead of embedding prompt editors', 
   assert.doesNotMatch(script, /saveRecipeSettings/);
   assert.doesNotMatch(script, /recipe-import\/settings/);
 });
+
+test('Recipe Builder uses one modal for recipe create, edit, import, and delete', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-recipes.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin-recipes.js'), 'utf8');
+
+  assert.match(html, /id="recipe-modal"/);
+  assert.match(html, /id="import-recipe-open-btn"/);
+  assert.match(html, /id="new-recipe-btn"/);
+  assert.match(html, /id="delete-recipe-btn"/);
+  assert.match(script, /openRecipeModal/);
+  assert.match(script, /DELETE/);
+  assert.match(script, /api\/recipes\/\$\{selectedRecipeId\}/);
+  assert.doesNotMatch(html, /<section class="meal-editor-panel">/);
+});

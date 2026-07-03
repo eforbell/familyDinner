@@ -6,7 +6,8 @@ const { Pool } = require('pg');
 
 const { app } = require('../server');
 
-async function cleanupRecipe(pool, recipeId) {
+async function cleanupRecipe(pool, recipeId, mealId) {
+  if (mealId) await pool.query('DELETE FROM meals WHERE id = $1', [mealId]);
   if (!recipeId) return;
   await pool.query('DELETE FROM meals WHERE recipe_id = $1', [recipeId]);
   await pool.query('DELETE FROM recipe_imports WHERE recipe_id = $1', [recipeId]);
@@ -26,9 +27,10 @@ test('recipe API can create, fetch, and convert a recipe into a meal', async (t)
   let baseUrl;
   const title = `Test Recipe ${randomUUID()}`;
   let recipeId;
+  let mealId;
 
   t.after(async () => {
-    await cleanupRecipe(pool, recipeId);
+    await cleanupRecipe(pool, recipeId, mealId);
     if (server) {
       await new Promise(resolve => server.close(resolve));
     }
@@ -77,6 +79,7 @@ test('recipe API can create, fetch, and convert a recipe into a meal', async (t)
   const mealPayload = await mealRes.json();
   assert.equal(mealPayload.created, true);
   assert.equal(mealPayload.meal.recipe_id, recipeId);
+  mealId = mealPayload.meal.id;
 
   const secondMealRes = await fetch(`${baseUrl}/api/recipes/${recipeId}/create-meal`, {
     method: 'POST',
@@ -84,4 +87,20 @@ test('recipe API can create, fetch, and convert a recipe into a meal', async (t)
   assert.equal(secondMealRes.status, 200);
   const secondMealPayload = await secondMealRes.json();
   assert.equal(secondMealPayload.created, false);
+
+  const deleteRes = await fetch(`${baseUrl}/api/recipes/${recipeId}`, {
+    method: 'DELETE',
+  });
+  assert.equal(deleteRes.status, 200);
+  const deletePayload = await deleteRes.json();
+  assert.equal(deletePayload.success, true);
+  assert.equal(deletePayload.unlinked_meals, 1);
+
+  const deletedGetRes = await fetch(`${baseUrl}/api/recipes/${recipeId}`);
+  assert.equal(deletedGetRes.status, 404);
+
+  const mealAfterDelete = await pool.query('SELECT recipe_id FROM meals WHERE id = $1', [mealId]);
+  assert.equal(mealAfterDelete.rows.length, 1);
+  assert.equal(mealAfterDelete.rows[0].recipe_id, null);
+  recipeId = null;
 });

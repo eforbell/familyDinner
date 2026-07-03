@@ -2320,6 +2320,36 @@ app.put('/api/recipes/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/recipes/:id', async (req, res) => {
+  const recipeId = Number(req.params.id);
+  if (!Number.isInteger(recipeId) || recipeId < 1) {
+    return res.status(400).json({ error: 'invalid recipe id' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const mealResult = await client.query(
+      'UPDATE meals SET recipe_id = NULL WHERE recipe_id = $1',
+      [recipeId]
+    );
+    const deleteResult = await client.query('DELETE FROM recipes WHERE id = $1', [recipeId]);
+    if (!deleteResult.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, unlinked_meals: mealResult.rowCount });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/recipes/:id/create-meal', async (req, res) => {
   const recipeId = Number(req.params.id);
   if (!Number.isInteger(recipeId) || recipeId < 1) {

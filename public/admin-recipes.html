@@ -17,7 +17,7 @@
     <header class="admin-header">
       <div>
         <div class="week-badge">Recipe Builder</div>
-        <h1>Build Recipes</h1>
+        <h1>Recipe Library</h1>
       </div>
       <div class="admin-header-actions">
         <a class="btn-ghost" href="../recipes">Browse recipes</a>
@@ -26,18 +26,24 @@
     </header>
 
     <section class="admin-intro">
-      <p class="admin-copy">Import recipes from a URL, edit saved recipes, and keep the library ready for the cook-view experience.</p>
+      <p class="admin-copy">Search, import, edit, and prune saved recipes. Edits open in one focused modal so the library stays easy to scan.</p>
       <p id="recipe-status" class="admin-status hidden"></p>
     </section>
 
-    <section class="meal-admin-layout recipe-layout">
+    <section class="meal-admin-layout meal-library-only recipe-library-only">
       <aside class="meal-library-panel">
         <div class="meal-library-head">
-          <h2>Recipe library</h2>
-          <button id="new-recipe-btn" class="btn-primary" type="button">New recipe</button>
+          <div>
+            <h2>Recipes</h2>
+            <p class="muted">Open a recipe to edit it, link it to a meal, or delete it.</p>
+          </div>
+          <div class="meal-library-actions">
+            <button id="import-recipe-open-btn" class="btn-ghost" type="button">Import recipe</button>
+            <button id="new-recipe-btn" class="btn-primary" type="button">New recipe</button>
+          </div>
         </div>
         <input id="recipe-search" class="meal-search" type="search" placeholder="Search recipes">
-        <div id="recipe-list" class="meal-list"></div>
+        <div id="recipe-list" class="meal-card-list"></div>
 
         <section class="admin-link-panel">
           <div>
@@ -47,110 +53,115 @@
           <a href="../admin/settings" class="btn-ghost admin-home-link">Open AI settings</a>
         </section>
       </aside>
+    </section>
+  </div>
 
-      <section class="meal-editor-panel">
-        <section class="magic-meal-panel">
-          <div class="meal-editor-head">
-            <div>
-              <h2>Import from URL</h2>
-              <p class="muted">Paste a recipe URL, strip the story, and review the cleaned recipe before saving.</p>
-            </div>
-            <button id="recipe-import-btn" class="btn-primary" type="button">Import recipe</button>
-          </div>
+  <!-- Recipe editor modal -->
+  <div id="recipe-modal" class="overlay hidden">
+    <div class="overlay-box wide meal-modal-box" role="dialog" aria-modal="true" aria-labelledby="recipe-form-title">
+      <div class="meal-editor-head meal-modal-head">
+        <div>
+          <h2 id="recipe-form-title">New recipe</h2>
+          <p id="recipe-form-subtitle" class="muted">Add a recipe manually or import one from a URL.</p>
+        </div>
+        <button id="recipe-modal-close" class="btn-ghost meal-modal-close" type="button" aria-label="Close editor">✕</button>
+      </div>
 
-          <label class="form-field">
-            <span>Recipe URL</span>
-            <input id="recipe-import-url" type="url" placeholder="https://example.com/recipe">
-          </label>
-
-          <div id="recipe-import-summary" class="magic-result hidden">
-            <div class="vote-label">Import summary</div>
-            <p id="recipe-import-meta" class="magic-why"></p>
-          </div>
-        </section>
-
+      <section id="recipe-import-panel" class="magic-meal-panel recipe-import-panel">
         <div class="meal-editor-head">
           <div>
-            <h2 id="recipe-form-title">New recipe</h2>
-            <p id="recipe-form-subtitle" class="muted">Add a recipe manually or import one from a URL.</p>
+            <h3>Import from URL</h3>
+            <p class="muted">Paste a recipe URL, strip the story, and review the cleaned recipe before saving.</p>
           </div>
-          <div class="meal-form-actions">
-            <a id="recipe-view-link" class="btn-ghost hidden" href="#">Cook view</a>
-            <button id="recipe-create-meal-btn" class="btn-ghost hidden" type="button">Create meal</button>
-            <a id="recipe-linked-meal-link" class="btn-ghost hidden" href="#">Open linked meal</a>
-          </div>
+          <button id="recipe-import-btn" class="btn-primary" type="button">Import recipe</button>
         </div>
 
-        <form id="recipe-form" class="meal-form">
-          <input id="recipe-import-id" type="hidden">
+        <label class="form-field">
+          <span>Recipe URL</span>
+          <input id="recipe-import-url" type="url" placeholder="https://example.com/recipe">
+        </label>
 
-          <label class="form-field">
-            <span>Title</span>
-            <input id="recipe-title" name="title" type="text" required>
-          </label>
-
-          <label class="form-field">
-            <span>Description</span>
-            <textarea id="recipe-description" name="description" rows="3" placeholder="Short dinner-friendly description"></textarea>
-          </label>
-
-          <div class="meal-form-grid">
-            <label class="form-field">
-              <span>Source URL</span>
-              <input id="recipe-source-url" name="source_url" type="url">
-            </label>
-            <label class="form-field">
-              <span>Source title</span>
-              <input id="recipe-source-title" name="source_title" type="text">
-            </label>
-            <label class="form-field">
-              <span>Servings</span>
-              <input id="recipe-servings" name="servings_text" type="text" placeholder="4 servings">
-            </label>
-            <label class="form-field">
-              <span>Image URL</span>
-              <input id="recipe-image-url" name="image_url" type="url">
-            </label>
-            <label class="form-field">
-              <span>Prep time (min)</span>
-              <input id="recipe-prep-time" name="prep_time_min" type="number" min="0" step="1">
-            </label>
-            <label class="form-field">
-              <span>Cook time (min)</span>
-              <input id="recipe-cook-time" name="cook_time_min" type="number" min="0" step="1">
-            </label>
-            <label class="form-field">
-              <span>Total time (min)</span>
-              <input id="recipe-total-time" name="total_time_min" type="number" min="0" step="1">
-            </label>
-            <label class="form-field">
-              <span>Tags</span>
-              <input id="recipe-tags" name="tags" type="text" placeholder="chicken, weeknight, bowls">
-            </label>
-          </div>
-
-          <label class="form-field">
-            <span>Ingredients — one per line</span>
-            <textarea id="recipe-ingredients" rows="8" placeholder="1 lb chicken thighs&#10;2 tbsp olive oil"></textarea>
-          </label>
-
-          <label class="form-field">
-            <span>Steps — one per line</span>
-            <textarea id="recipe-steps" rows="10" placeholder="Heat the oven to 425°F.&#10;Toss chicken with oil and seasoning."></textarea>
-          </label>
-
-          <label class="form-field">
-            <span>Cook notes</span>
-            <textarea id="recipe-notes" name="notes" rows="5" placeholder="Helpful serving, prep, or kid-specific notes"></textarea>
-          </label>
-
-          <div class="meal-form-actions">
-            <button class="btn-primary" type="submit">Save recipe</button>
-            <button id="reset-recipe-btn" class="btn-ghost" type="button">Reset</button>
-          </div>
-        </form>
+        <div id="recipe-import-summary" class="magic-result hidden">
+          <div class="vote-label">Import summary</div>
+          <p id="recipe-import-meta" class="magic-why"></p>
+        </div>
       </section>
-    </section>
+
+      <p id="recipe-modal-status" class="admin-status is-error hidden"></p>
+
+      <form id="recipe-form" class="meal-form">
+        <input id="recipe-import-id" type="hidden">
+
+        <label class="form-field">
+          <span>Title</span>
+          <input id="recipe-title" name="title" type="text" required>
+        </label>
+
+        <label class="form-field">
+          <span>Description</span>
+          <textarea id="recipe-description" name="description" rows="3" placeholder="Short dinner-friendly description"></textarea>
+        </label>
+
+        <div class="meal-form-grid">
+          <label class="form-field">
+            <span>Source URL</span>
+            <input id="recipe-source-url" name="source_url" type="url">
+          </label>
+          <label class="form-field">
+            <span>Source title</span>
+            <input id="recipe-source-title" name="source_title" type="text">
+          </label>
+          <label class="form-field">
+            <span>Servings</span>
+            <input id="recipe-servings" name="servings_text" type="text" placeholder="4 servings">
+          </label>
+          <label class="form-field">
+            <span>Image URL</span>
+            <input id="recipe-image-url" name="image_url" type="url">
+          </label>
+          <label class="form-field">
+            <span>Prep time (min)</span>
+            <input id="recipe-prep-time" name="prep_time_min" type="number" min="0" step="1">
+          </label>
+          <label class="form-field">
+            <span>Cook time (min)</span>
+            <input id="recipe-cook-time" name="cook_time_min" type="number" min="0" step="1">
+          </label>
+          <label class="form-field">
+            <span>Total time (min)</span>
+            <input id="recipe-total-time" name="total_time_min" type="number" min="0" step="1">
+          </label>
+          <label class="form-field">
+            <span>Tags</span>
+            <input id="recipe-tags" name="tags" type="text" placeholder="chicken, weeknight, bowls">
+          </label>
+        </div>
+
+        <label class="form-field">
+          <span>Ingredients — one per line</span>
+          <textarea id="recipe-ingredients" rows="8" placeholder="1 lb chicken thighs&#10;2 tbsp olive oil"></textarea>
+        </label>
+
+        <label class="form-field">
+          <span>Steps — one per line</span>
+          <textarea id="recipe-steps" rows="10" placeholder="Heat the oven to 425°F.&#10;Toss chicken with oil and seasoning."></textarea>
+        </label>
+
+        <label class="form-field">
+          <span>Cook notes</span>
+          <textarea id="recipe-notes" name="notes" rows="5" placeholder="Helpful serving, prep, or kid-specific notes"></textarea>
+        </label>
+
+        <div class="meal-form-actions meal-modal-actions">
+          <button class="btn-primary" type="submit">Save recipe</button>
+          <button id="recipe-cancel-btn" class="btn-ghost" type="button">Cancel</button>
+          <a id="recipe-view-link" class="btn-ghost hidden" href="#">Cook view</a>
+          <button id="recipe-create-meal-btn" class="btn-ghost hidden" type="button">Create meal</button>
+          <a id="recipe-linked-meal-link" class="btn-ghost hidden" href="#">Open linked meal</a>
+          <button id="delete-recipe-btn" class="btn-danger hidden" type="button">Delete recipe</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="../theme.js"></script>
