@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>AI Settings</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../sovereign-fonts.css">
+  <link rel="stylesheet" href="../sovereign-chassis.css">
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="../dinner-skin.css">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body data-nav-page="settings" data-nav-root="..">
+  <div id="app" class="admin-app">
+    <header class="admin-header">
+      <div>
+        <div class="week-badge">AI Settings</div>
+        <h1>Magic & Import Settings</h1>
+      </div>
+      <div class="admin-header-actions">
+        <button class="btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+      </div>
+    </header>
+
+    <section class="admin-intro">
+      <p class="admin-copy">Tune the saved prompts behind Magic Meal, Magic Grocery, and recipe import without crowding the daily meal and planning screens.</p>
+      <p id="settings-status" class="admin-status hidden"></p>
+    </section>
+
+    <section class="settings-grid">
+      <section class="magic-meal-panel">
+        <div class="meal-editor-head">
+          <div>
+            <h2>Magic Meal</h2>
+            <p class="muted">House guidance used whenever Magic Meal drafts a new library item.</p>
+          </div>
+        </div>
+        <label class="form-field">
+          <span>House guidance for Magic Meal</span>
+          <textarea id="magic-meal-prompt" rows="8" placeholder="Tell the AI what this household tends to like, avoid, or repeat."></textarea>
+        </label>
+        <div class="meal-form-actions">
+          <button id="save-magic-settings-btn" class="btn-primary" type="button">Save Magic Meal</button>
+        </div>
+      </section>
+
+      <section class="magic-grocery-panel">
+        <div class="meal-editor-head">
+          <div>
+            <h2>Magic Grocery</h2>
+            <p class="muted">Shopping preferences and pantry assumptions for generated grocery lists.</p>
+          </div>
+        </div>
+        <label class="form-field">
+          <span>House guidance for Magic Grocery</span>
+          <textarea id="magic-grocery-prompt" rows="8" placeholder="Add household shopping rules, pantry assumptions, favorite brands, or budget notes."></textarea>
+        </label>
+        <div class="meal-form-actions">
+          <button id="save-grocery-settings-btn" class="btn-primary" type="button">Save Magic Grocery</button>
+        </div>
+      </section>
+
+      <section class="magic-meal-panel">
+        <div class="meal-editor-head">
+          <div>
+            <h2>Recipe Import</h2>
+            <p class="muted">Extraction behavior for cleaning recipes from source URLs.</p>
+          </div>
+        </div>
+        <label class="form-field">
+          <span>Recipe import prompt</span>
+          <textarea id="magic-recipe-import-prompt" rows="6"></textarea>
+        </label>
+        <label class="form-field">
+          <span>Recipe detail prompt</span>
+          <textarea id="magic-recipe-detail-prompt" rows="6"></textarea>
+        </label>
+        <div class="meal-form-actions">
+          <button id="save-recipe-settings-btn" class="btn-primary" type="button">Save Recipe Import</button>
+        </div>
+      </section>
+    </section>
+  </div>
+
+  <script src="../theme.js"></script>
+  <script src="../nav.js"></script>
+  <script src="../admin-settings.js"></script>
+</body>
+</html>

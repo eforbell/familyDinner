@@ -3107,6 +3107,10 @@ app.get('/admin/cook-history', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-cook-history.html'));
 });
 
+app.get('/admin/settings', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-settings.html'));
+});
+
 app.get('/admin/recipes', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-recipes.html'));
 });

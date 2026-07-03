@@ -1216,3 +1216,79 @@ body.app-has-nav .recipe-detail-page .admin-header {
 @media (max-width: 640px) {
   .meal-card-list { grid-template-columns: 1fr; }
 }
+
+.meal-library-only .meal-library-panel {
+  max-width: 860px;
+  width: 100%;
+}
+
+.meal-library-actions,
+.plan-grocery-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.plan-grocery-card {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin: 0 1rem 1rem;
+  padding: 1rem;
+}
+
+.plan-grocery-card > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 2rem;
+}
+
+.settings-grid > section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+@media (min-width: 980px) {
+  .meal-admin-layout.meal-library-only {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-grid > section:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .meal-library-head,
+  .plan-grocery-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .meal-library-actions,
+  .plan-grocery-actions {
+    justify-content: stretch;
+  }
+
+  .meal-library-actions > *,
+  .plan-grocery-actions > * {
+    flex: 1;
+  }
+}

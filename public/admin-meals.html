@@ -29,11 +29,17 @@
       <p id="meal-admin-status" class="admin-status hidden"></p>
     </section>
 
-    <section class="meal-admin-layout">
+    <section class="meal-admin-layout meal-library-only">
       <aside class="meal-library-panel">
         <div class="meal-library-head">
-          <h2>Meals</h2>
-          <button id="new-meal-btn" class="btn-primary" type="button">New meal</button>
+          <div>
+            <h2>Meals</h2>
+            <p class="muted">Search, edit, or add meals. Magic Meal drafts open in the same editor.</p>
+          </div>
+          <div class="meal-library-actions">
+            <button id="magic-generate-btn" class="btn-ghost" type="button">Magic Meal</button>
+            <button id="new-meal-btn" class="btn-primary" type="button">New meal</button>
+          </div>
         </div>
         <input id="meal-search" class="meal-search" type="search" placeholder="Search meals">
         <div id="meal-list" class="meal-card-list"></div>
@@ -46,77 +52,6 @@
           <a href="../admin/cook-history" class="btn-ghost admin-home-link">Open cook history</a>
         </section>
       </aside>
-
-      <section class="meal-editor-panel">
-        <section class="magic-meal-panel">
-          <div class="meal-editor-head">
-            <div>
-              <h2>Magic Meal</h2>
-              <p class="muted">Generate one draft meal using your meal history, votes, and cooking patterns.</p>
-            </div>
-            <button id="magic-generate-btn" class="btn-primary" type="button">Magic Meal</button>
-          </div>
-
-          <label class="form-field">
-            <span>House guidance for Magic Meal</span>
-            <textarea id="magic-meal-prompt" rows="4" placeholder="Tell the AI what this household tends to like, avoid, or repeat."></textarea>
-          </label>
-
-          <div class="meal-form-actions">
-            <button id="save-magic-settings-btn" class="btn-ghost" type="button">Save Magic settings</button>
-          </div>
-
-          <label class="form-field">
-            <span>One-time generation notes</span>
-            <textarea id="magic-meal-notes" rows="3" placeholder="Optional. Example: something cozy, under 35 minutes, and not pasta."></textarea>
-          </label>
-
-        </section>
-
-        <section class="magic-grocery-panel">
-          <div class="meal-editor-head">
-            <div>
-              <h2>Magic Grocery</h2>
-              <p class="muted">Generate a consolidated shopping list from the current week plan.</p>
-            </div>
-            <button id="magic-grocery-generate-btn" class="btn-primary" type="button">Magic Grocery</button>
-          </div>
-
-          <label class="form-field">
-            <span>House guidance for Magic Grocery</span>
-            <textarea id="magic-grocery-prompt" rows="4" placeholder="Add household shopping rules, pantry assumptions, favorite brands, or budget notes."></textarea>
-          </label>
-
-          <div class="meal-form-actions">
-            <button id="save-grocery-settings-btn" class="btn-ghost" type="button">Save Grocery settings</button>
-          </div>
-
-          <label class="form-field">
-            <span>Target week (pick any date in that week)</span>
-            <input id="magic-grocery-week-date" type="date">
-            <small id="magic-grocery-week-range" class="muted"></small>
-          </label>
-
-          <div class="meal-form-actions">
-            <button id="magic-grocery-this-week-btn" class="btn-ghost" type="button">Use this week</button>
-            <button id="magic-grocery-next-week-btn" class="btn-ghost" type="button">Use next week</button>
-          </div>
-
-          <label class="form-field">
-            <span>One-time grocery notes</span>
-            <textarea id="magic-grocery-notes" rows="3" placeholder="Optional. Example: we're low on staples, avoid expensive proteins this week."></textarea>
-          </label>
-
-          <div id="magic-grocery-result" class="magic-result hidden">
-            <div class="vote-label">Weekly list</div>
-            <pre id="magic-grocery-list" class="magic-grocery-list"></pre>
-            <div class="meal-form-actions">
-              <button id="print-grocery-btn" class="btn-ghost" type="button">Print-friendly view</button>
-            </div>
-            <p id="magic-grocery-summary" class="muted"></p>
-          </div>
-        </section>
-      </section>
     </section>
   </div>
 
@@ -226,10 +161,6 @@
     </div>
   </div>
 
-  <section id="print-grocery-view" aria-hidden="true">
-    <h1 id="print-grocery-title"></h1>
-    <pre id="print-grocery-body"></pre>
-  </section>
 
   <script src="../theme.js"></script>
   <script src="../nav.js"></script>

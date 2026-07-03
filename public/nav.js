@@ -14,6 +14,7 @@
     meals: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h14"/><path d="M5 10v5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-5"/><path d="M6.5 8V5.8M9.5 8V4.8M12.5 8V5.3M15.5 8V4.6"/></svg>',
     planner: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M6 2.5v3M14 2.5v3M3 8h14"/><path d="M6.5 11h2M11.5 11h2M6.5 14h2"/></svg>',
     rotation: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 8.5A6.5 6.5 0 0 0 4.6 6.4M3.5 11.5a6.5 6.5 0 0 0 11.9 2.1"/><path d="M16.5 3.5v5h-5M3.5 16.5v-5h5"/></svg>',
+    settings: '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.8v2M10 15.2v2M4.9 4.9l1.4 1.4M13.7 13.7l1.4 1.4M2.8 10h2M15.2 10h2M4.9 15.1l1.4-1.4M13.7 6.3l1.4-1.4"/></svg>',
     more: '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/></svg>',
   };
 
@@ -24,6 +25,7 @@
     { id: 'meals', label: 'Meals', icon: 'meals', path: 'admin/meals' },
     { id: 'recipe-builder', label: 'Recipe Builder', icon: 'recipes', path: 'admin/recipes' },
     { id: 'planner', label: 'Rotation Template', icon: 'rotation', path: 'admin' },
+    { id: 'settings', label: 'AI Settings', icon: 'settings', path: 'admin/settings' },
     { id: 'tonight', label: 'Tonight', icon: 'tonight', path: 'tonight' },
   ];
 

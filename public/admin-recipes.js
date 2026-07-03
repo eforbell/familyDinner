@@ -12,9 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('recipe-import-btn').addEventListener('click', importRecipe);
   document.getElementById('recipe-form').addEventListener('submit', saveRecipe);
   document.getElementById('recipe-create-meal-btn').addEventListener('click', createMealFromRecipe);
-  document.getElementById('save-recipe-settings-btn').addEventListener('click', saveRecipeSettings);
   loadRecipes();
-  loadRecipeSettings();
 });
 
 async function loadRecipes() {
@@ -30,36 +28,6 @@ async function loadRecipes() {
     }
   } catch (err) {
     setStatus('Could not load recipes.', true);
-  }
-}
-
-async function loadRecipeSettings() {
-  try {
-    const res = await fetch('../api/recipe-import/settings');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not load recipe settings');
-    document.getElementById('magic-recipe-import-prompt').value = data.magic_recipe_import_prompt || '';
-    document.getElementById('magic-recipe-detail-prompt').value = data.magic_recipe_detail_prompt || '';
-  } catch (err) {
-    setStatus(err.message || 'Could not load recipe settings.', true);
-  }
-}
-
-async function saveRecipeSettings() {
-  try {
-    const res = await fetch('../api/recipe-import/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        magic_recipe_import_prompt: document.getElementById('magic-recipe-import-prompt').value,
-        magic_recipe_detail_prompt: document.getElementById('magic-recipe-detail-prompt').value,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not save recipe settings');
-    setStatus('Recipe import settings saved.', false);
-  } catch (err) {
-    setStatus(err.message || 'Could not save recipe settings.', true);
   }
 }
 

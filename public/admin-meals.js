@@ -2,7 +2,6 @@ let meals = [];
 let filteredMeals = [];
 let selectedMealId = null;
 let lastMagicDraft = null;
-let lastGroceryList = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('meal-form').addEventListener('submit', saveMeal);
@@ -21,17 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('delete-meal-btn').addEventListener('click', deleteMeal);
   document.getElementById('meal-search').addEventListener('input', applySearch);
   document.getElementById('magic-generate-btn').addEventListener('click', generateMagicMeal);
-  document.getElementById('save-magic-settings-btn').addEventListener('click', saveMagicSettings);
-  document.getElementById('magic-grocery-generate-btn').addEventListener('click', generateMagicGrocery);
-  document.getElementById('save-grocery-settings-btn').addEventListener('click', saveMagicGrocerySettings);
-  document.getElementById('print-grocery-btn').addEventListener('click', printMagicGrocery);
-  document.getElementById('magic-grocery-week-date').addEventListener('change', updateMagicGroceryWeekRange);
-  document.getElementById('magic-grocery-this-week-btn').addEventListener('click', setMagicGroceryWeekToThisWeek);
-  document.getElementById('magic-grocery-next-week-btn').addEventListener('click', setMagicGroceryWeekToNextWeek);
-  initializeMagicGroceryWeekPicker();
   loadMeals();
-  loadMagicSettings();
-  loadMagicGrocerySettings();
 });
 
 async function loadMeals() {
@@ -256,55 +245,16 @@ async function deleteMeal() {
   }
 }
 
-async function loadMagicSettings() {
-  try {
-    const res = await fetch('../api/magic-meal/settings');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not load Magic Meal settings');
-    document.getElementById('magic-meal-prompt').value = data.magic_meal_prompt || '';
-  } catch (err) {
-    setStatus(err.message || 'Could not load Magic Meal settings.', true);
-  }
-}
-
-async function saveMagicSettings() {
-  try {
-    await persistMagicSettings(false);
-    setStatus('Magic Meal settings saved.', false);
-  } catch (err) {
-    setStatus(err.message || 'Could not save Magic Meal settings.', true);
-  }
-}
-
-async function persistMagicSettings(showStatus) {
-  const prompt = document.getElementById('magic-meal-prompt').value;
-  const res = await fetch('../api/magic-meal/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ magic_meal_prompt: prompt }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Could not save Magic Meal settings');
-  }
-  if (showStatus) setStatus('Magic Meal settings saved.', false);
-  return data;
-}
-
 async function generateMagicMeal() {
   const button = document.getElementById('magic-generate-btn');
   button.disabled = true;
   button.textContent = 'Thinking...';
 
   try {
-    await persistMagicSettings(false);
-
     const res = await fetch('../api/magic-meal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        request_notes: document.getElementById('magic-meal-notes').value,
-      }),
+      body: JSON.stringify({ request_notes: '' }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Magic Meal failed');
@@ -337,184 +287,6 @@ function hideMagicResult() {
   document.getElementById('magic-meal-result').classList.add('hidden');
   document.getElementById('magic-meal-why').textContent = '';
   document.getElementById('magic-meal-summary').textContent = '';
-}
-
-async function loadMagicGrocerySettings() {
-  try {
-    const res = await fetch('../api/magic-grocery/settings');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not load Magic Grocery settings');
-    document.getElementById('magic-grocery-prompt').value = data.magic_grocery_prompt || '';
-  } catch (err) {
-    setStatus(err.message || 'Could not load Magic Grocery settings.', true);
-  }
-}
-
-async function saveMagicGrocerySettings() {
-  try {
-    await persistMagicGrocerySettings(false);
-    setStatus('Magic Grocery settings saved.', false);
-  } catch (err) {
-    setStatus(err.message || 'Could not save Magic Grocery settings.', true);
-  }
-}
-
-async function persistMagicGrocerySettings(showStatus) {
-  const prompt = document.getElementById('magic-grocery-prompt').value;
-  const res = await fetch('../api/magic-grocery/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ magic_grocery_prompt: prompt }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Could not save Magic Grocery settings');
-  }
-  if (showStatus) setStatus('Magic Grocery settings saved.', false);
-  return data;
-}
-
-async function generateMagicGrocery() {
-  const button = document.getElementById('magic-grocery-generate-btn');
-  button.disabled = true;
-  button.textContent = 'Building list...';
-
-  try {
-    await persistMagicGrocerySettings(false);
-
-    const res = await fetch('../api/magic-grocery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        request_notes: document.getElementById('magic-grocery-notes').value,
-        week_start_date: document.getElementById('magic-grocery-week-date').value,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Magic Grocery failed');
-
-    lastGroceryList = data.list;
-    renderMagicGroceryResult(data);
-    setStatus('Magic Grocery built a weekly grocery list.', false);
-  } catch (err) {
-    setStatus(err.message || 'Magic Grocery failed.', true);
-  } finally {
-    button.disabled = false;
-    button.textContent = 'Magic Grocery';
-  }
-}
-
-function renderMagicGroceryResult(data) {
-  const result = document.getElementById('magic-grocery-result');
-  const list = document.getElementById('magic-grocery-list');
-  result.classList.remove('hidden');
-
-  const lines = [data.list.title || 'Weekly Grocery List', ''];
-  for (const section of data.list.sections || []) {
-    lines.push(`${section.name}:`);
-    for (const item of section.items || []) {
-      const usedFor = (item.used_for || []).length ? ` (${item.used_for.join(', ')})` : '';
-      lines.push(`- ${item.name}${item.quantity ? ` — ${item.quantity}` : ''}${usedFor}`);
-    }
-    lines.push('');
-  }
-
-  if ((data.list.prep_notes || []).length) {
-    lines.push('Prep notes:');
-    for (const note of data.list.prep_notes) {
-      lines.push(`- ${note}`);
-    }
-  }
-
-  list.textContent = lines.join('\n').trim();
-  document.getElementById('magic-grocery-summary').textContent =
-    `Built from ${data.context_summary.meal_count} planned cook-at-home meals for ${data.context_summary.week_start} → ${data.context_summary.week_end}.`;
-}
-
-function printMagicGrocery() {
-  if (!lastGroceryList) {
-    setStatus('Generate a grocery list first, then print it.', true);
-    return;
-  }
-
-  const title = lastGroceryList.title || 'Weekly Grocery List';
-  const body = document.getElementById('magic-grocery-list').textContent || '';
-
-  document.getElementById('print-grocery-title').textContent = title;
-  document.getElementById('print-grocery-body').textContent = body;
-
-  const cleanup = () => {
-    document.body.classList.remove('print-grocery-mode');
-  };
-
-  document.body.classList.add('print-grocery-mode');
-  window.addEventListener('afterprint', cleanup, { once: true });
-  window.addEventListener('focus', cleanup, { once: true });
-  window.print();
-}
-
-function initializeMagicGroceryWeekPicker() {
-  const input = document.getElementById('magic-grocery-week-date');
-  if (!input) return;
-  input.value = toDateInputValue(new Date());
-  updateMagicGroceryWeekRange();
-}
-
-function setMagicGroceryWeekToThisWeek() {
-  const input = document.getElementById('magic-grocery-week-date');
-  if (!input) return;
-  input.value = toDateInputValue(new Date());
-  updateMagicGroceryWeekRange();
-}
-
-function setMagicGroceryWeekToNextWeek() {
-  const input = document.getElementById('magic-grocery-week-date');
-  if (!input) return;
-  const d = new Date();
-  d.setDate(d.getDate() + 7);
-  input.value = toDateInputValue(d);
-  updateMagicGroceryWeekRange();
-}
-
-function updateMagicGroceryWeekRange() {
-  const input = document.getElementById('magic-grocery-week-date');
-  const out = document.getElementById('magic-grocery-week-range');
-  if (!input || !out || !input.value) return;
-
-  const selected = parseInputDate(input.value);
-  const start = mondayOf(selected);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-
-  out.textContent = `Week range: ${formatLongDate(start)} → ${formatLongDate(end)}`;
-}
-
-function mondayOf(date) {
-  const d = new Date(date);
-  d.setHours(12, 0, 0, 0);
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d;
-}
-
-function parseInputDate(value) {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(year, month - 1, day, 12);
-}
-
-function toDateInputValue(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function formatLongDate(date) {
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 function setStatus(message, isError) {

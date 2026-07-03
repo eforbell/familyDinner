@@ -36,6 +36,16 @@
 
     <p id="plan-status" class="admin-status hidden"></p>
 
+    <section class="plan-grocery-card">
+      <div>
+        <strong>Grocery list for this week</strong>
+        <span id="magic-grocery-week-label" class="muted">Uses the week currently shown above.</span>
+      </div>
+      <div class="plan-grocery-actions">
+        <button id="magic-grocery-generate-btn" class="btn-primary" type="button">Magic Grocery</button>
+      </div>
+    </section>
+
     <section id="plan-autofill" class="plan-autofill hidden">
       <div class="plan-autofill-copy">
         <strong id="plan-autofill-title">Fill the empty nights</strong>
@@ -51,6 +61,40 @@
       <div class="loading-pulse">Loading…</div>
     </section>
   </div>
+
+
+  <div id="magic-grocery-modal" class="overlay hidden">
+    <div class="overlay-box wide meal-modal-box" role="dialog" aria-modal="true" aria-labelledby="magic-grocery-title">
+      <div class="meal-editor-head meal-modal-head">
+        <div>
+          <h2 id="magic-grocery-title">Magic Grocery</h2>
+          <p id="magic-grocery-subtitle" class="muted">Generate a list from the week currently in focus.</p>
+        </div>
+        <button id="magic-grocery-modal-close" class="btn-ghost meal-modal-close" type="button" aria-label="Close grocery list">✕</button>
+      </div>
+
+      <label class="form-field">
+        <span>One-time grocery notes</span>
+        <textarea id="magic-grocery-notes" rows="3" placeholder="Optional. Example: we're low on staples, avoid expensive proteins this week."></textarea>
+      </label>
+
+      <div class="meal-form-actions">
+        <button id="magic-grocery-run-btn" class="btn-primary" type="button">Generate list</button>
+        <button id="print-grocery-btn" class="btn-ghost hidden" type="button">Print-friendly view</button>
+      </div>
+
+      <div id="magic-grocery-result" class="magic-result hidden">
+        <div class="vote-label">Weekly list</div>
+        <pre id="magic-grocery-list" class="magic-grocery-list"></pre>
+        <p id="magic-grocery-summary" class="muted"></p>
+      </div>
+    </div>
+  </div>
+
+  <section id="print-grocery-view" aria-hidden="true">
+    <h1 id="print-grocery-title"></h1>
+    <pre id="print-grocery-body"></pre>
+  </section>
 
   <script src="theme.js"></script>
   <script src="nav.js"></script>
