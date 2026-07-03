@@ -36,7 +36,7 @@
           <button id="new-meal-btn" class="btn-primary" type="button">New meal</button>
         </div>
         <input id="meal-search" class="meal-search" type="search" placeholder="Search meals">
-        <div id="meal-list" class="meal-list"></div>
+        <div id="meal-list" class="meal-card-list"></div>
 
         <section class="admin-link-panel">
           <div>
@@ -71,11 +71,6 @@
             <textarea id="magic-meal-notes" rows="3" placeholder="Optional. Example: something cozy, under 35 minutes, and not pasta."></textarea>
           </label>
 
-          <div id="magic-meal-result" class="magic-result hidden">
-            <div class="vote-label">Why this fits</div>
-            <p id="magic-meal-why" class="magic-why"></p>
-            <p id="magic-meal-summary" class="muted"></p>
-          </div>
         </section>
 
         <section class="magic-grocery-panel">
@@ -121,16 +116,30 @@
             <p id="magic-grocery-summary" class="muted"></p>
           </div>
         </section>
+      </section>
+    </section>
+  </div>
 
-        <div class="meal-editor-head">
-          <div>
-            <h2 id="meal-form-title">New meal</h2>
-            <p id="meal-form-subtitle" class="muted">Fill this in, then save it into the catalog.</p>
-          </div>
-          <button id="delete-meal-btn" class="btn-danger hidden" type="button">Delete meal</button>
+  <!-- Meal editor modal -->
+  <div id="meal-modal" class="overlay hidden">
+    <div class="overlay-box wide meal-modal-box" role="dialog" aria-modal="true" aria-labelledby="meal-form-title">
+      <div class="meal-editor-head meal-modal-head">
+        <div>
+          <h2 id="meal-form-title">New meal</h2>
+          <p id="meal-form-subtitle" class="muted">Fill this in, then save it into the catalog.</p>
         </div>
+        <button id="meal-modal-close" class="btn-ghost meal-modal-close" type="button" aria-label="Close editor">✕</button>
+      </div>
 
-        <form id="meal-form" class="meal-form">
+      <div id="magic-meal-result" class="magic-result hidden">
+        <div class="vote-label">Why this fits</div>
+        <p id="magic-meal-why" class="magic-why"></p>
+        <p id="magic-meal-summary" class="muted"></p>
+      </div>
+
+      <p id="meal-modal-status" class="admin-status is-error hidden"></p>
+
+      <form id="meal-form" class="meal-form">
           <input name="recipe_id" type="hidden">
 
           <label class="form-field">
@@ -200,9 +209,10 @@
             </label>
           </div>
 
-          <div class="meal-form-actions">
+          <div class="meal-form-actions meal-modal-actions">
             <button class="btn-primary" type="submit">Save meal</button>
-            <button id="reset-meal-btn" class="btn-ghost" type="button">Reset form</button>
+            <button id="meal-cancel-btn" class="btn-ghost" type="button">Cancel</button>
+            <button id="delete-meal-btn" class="btn-danger hidden" type="button">Delete meal</button>
           </div>
         </form>
 
@@ -213,8 +223,7 @@
           <option value="👩‍🍳 or 👨‍🍳"></option>
           <option value="—"></option>
         </datalist>
-      </section>
-    </section>
+    </div>
   </div>
 
   <section id="print-grocery-view" aria-hidden="true">

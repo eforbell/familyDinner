@@ -6,8 +6,18 @@ let lastGroceryList = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('meal-form').addEventListener('submit', saveMeal);
-  document.getElementById('new-meal-btn').addEventListener('click', resetForm);
-  document.getElementById('reset-meal-btn').addEventListener('click', resetForm);
+  document.getElementById('new-meal-btn').addEventListener('click', () => {
+    resetForm();
+    openMealModal();
+  });
+  document.getElementById('meal-cancel-btn').addEventListener('click', closeMealModal);
+  document.getElementById('meal-modal-close').addEventListener('click', closeMealModal);
+  document.getElementById('meal-modal').addEventListener('click', event => {
+    if (event.target === event.currentTarget) closeMealModal();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMealModal();
+  });
   document.getElementById('delete-meal-btn').addEventListener('click', deleteMeal);
   document.getElementById('meal-search').addEventListener('input', applySearch);
   document.getElementById('magic-generate-btn').addEventListener('click', generateMagicMeal);
@@ -26,20 +36,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadMeals() {
   try {
-    const res = await fetch('../api/rotation');
+    const res = await fetch('../api/meals');
     const data = await res.json();
-    meals = [...data.meals].sort((a, b) => a.name.localeCompare(b.name));
-    filteredMeals = meals;
-    renderMealList();
+    if (!res.ok) throw new Error(data.error || 'Could not load meals');
+    meals = data;
+    applySearch();
     const preselectedMealId = getMealIdFromQuery();
-    if (preselectedMealId) {
-      await selectMeal(preselectedMealId);
-      return;
-    }
-    if (!selectedMealId) resetForm();
+    if (preselectedMealId) await selectMeal(preselectedMealId);
   } catch (err) {
     setStatus('Could not load meals.', true);
   }
+}
+
+function fmtTime(mins) {
+  if (!mins) return '';
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${mins}m`;
+}
+
+function ratingDot(rating) {
+  if (!rating) return '';
+  for (const dot of ['🟢', '🟡', '🔵', '🔴']) {
+    if (rating.includes(dot)) return dot;
+  }
+  return '';
 }
 
 function renderMealList() {
@@ -49,20 +73,50 @@ function renderMealList() {
     return;
   }
 
-  list.innerHTML = filteredMeals.map(meal => `
-    <button class="meal-list-item${meal.id === selectedMealId ? ' active' : ''}" type="button" data-id="${meal.id}">
-      <span class="meal-list-name">${esc(meal.name)}</span>
-      <span class="meal-list-meta">
-        ${meal.kid_rating ? esc(meal.kid_rating) : ''}
-        ${meal.is_protected ? ' · protected' : ''}
-        ${meal.is_new ? ' · new' : ''}
-      </span>
-    </button>
-  `).join('');
+  list.innerHTML = filteredMeals.map(meal => {
+    const chips = [
+      ratingDot(meal.kid_rating),
+      meal.cook || '',
+      fmtTime(meal.total_time_min),
+      meal.is_new ? '★ NEW' : '',
+      meal.is_protected ? 'no-cook' : '',
+    ].filter(Boolean).map(chip => `<span class="mp-chip">${esc(chip)}</span>`).join('');
 
-  list.querySelectorAll('.meal-list-item').forEach(button => {
+    return `
+      <button class="meal-card-item${meal.id === selectedMealId ? ' active' : ''}" type="button" data-id="${meal.id}">
+        <span class="meal-list-name">${esc(meal.name)}</span>
+        <span class="meal-card-meta">${chips}</span>
+      </button>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.meal-card-item').forEach(button => {
     button.addEventListener('click', () => selectMeal(Number(button.dataset.id)));
   });
+}
+
+// ── Modal ─────────────────────────────────────────────────────
+function openMealModal() {
+  setModalStatus('');
+  document.getElementById('meal-modal').classList.remove('hidden');
+  const nameInput = document.getElementById('meal-form').elements.name;
+  setTimeout(() => nameInput.focus(), 40);
+}
+
+function closeMealModal() {
+  const modal = document.getElementById('meal-modal');
+  if (modal.classList.contains('hidden')) return;
+  modal.classList.add('hidden');
+  setModalStatus('');
+  selectedMealId = null;
+  lastMagicDraft = null;
+  renderMealList();
+}
+
+function setModalStatus(message) {
+  const el = document.getElementById('meal-modal-status');
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
 }
 
 function applySearch() {
@@ -99,6 +153,7 @@ async function selectMeal(mealId) {
     hideMagicResult();
     renderMealList();
     updateEditorState();
+    openMealModal();
   } catch (err) {
     setStatus(err.message || 'Could not load meal.', true);
   }
@@ -132,6 +187,7 @@ function resetForm() {
   document.getElementById('meal-form').elements.recipe_id.value = '';
   document.getElementById('linked-recipe-row').classList.add('hidden');
   hideMagicResult();
+  setModalStatus('');
   updateEditorState();
   renderMealList();
 }
@@ -174,12 +230,11 @@ async function saveMeal(event) {
     const meal = await res.json();
     if (!res.ok) throw new Error(meal.error || 'Save failed');
 
-    selectedMealId = meal.id;
-    setStatus(selectedMealId && method === 'PUT' ? 'Meal updated.' : 'Meal created.', false);
+    setStatus(method === 'PUT' ? `“${meal.name}” updated.` : `“${meal.name}” added to the library.`, false);
+    closeMealModal();
     await loadMeals();
-    await selectMeal(selectedMealId);
   } catch (err) {
-    setStatus(err.message || 'Save failed.', true);
+    setModalStatus(err.message || 'Save failed.');
   }
 }
 
@@ -193,10 +248,11 @@ async function deleteMeal() {
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 
     setStatus('Meal deleted.', false);
+    closeMealModal();
     resetForm();
     await loadMeals();
   } catch (err) {
-    setStatus(err.message || 'Delete failed.', true);
+    setModalStatus(err.message || 'Delete failed.');
   }
 }
 
@@ -259,7 +315,8 @@ async function generateMagicMeal() {
     renderMagicResult(data);
     updateEditorState();
     renderMealList();
-    setStatus('Magic Meal drafted a new meal into the form.', false);
+    openMealModal();
+    setStatus('Magic Meal drafted a new meal — review and save it.', false);
   } catch (err) {
     setStatus(err.message || 'Magic Meal failed.', true);
   } finally {
