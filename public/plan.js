@@ -231,18 +231,31 @@ function printMagicGrocery() {
 
   printWindow.document.write(
     '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
     '<style>' +
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
-    'color:#111;background:#fff;padding:12mm;margin:0;}' +
+    'color:#111;background:#fff;margin:0;}' +
+    '.pg-toolbar{padding:calc(env(safe-area-inset-top,0px) + 0.6rem) 12mm 0.6rem;' +
+    'display:flex;justify-content:flex-end;}' +
+    '.pg-close{font:inherit;font-size:0.95rem;font-weight:600;padding:0.5rem 1rem;' +
+    'border:1px solid #ccc;border-radius:8px;background:#f4f4f4;color:#111;}' +
+    '.pg-content{padding:0 12mm 12mm;}' +
     'h1{font-size:1.6rem;margin:0 0 0.75rem;}' +
     'pre{font-family:inherit;font-size:1rem;line-height:1.45;margin:0;white-space:pre-wrap;}' +
-    '</style></head><body><h1 id="pg-title"></h1><pre id="pg-body"></pre></body></html>'
+    '@media print{.pg-toolbar{display:none;}}' +
+    '</style></head><body>' +
+    '<div class="pg-toolbar"><button type="button" class="pg-close" id="pg-close">Close</button></div>' +
+    '<div class="pg-content"><h1 id="pg-title"></h1><pre id="pg-body"></pre></div>' +
+    '</body></html>'
   );
   printWindow.document.close();
 
   printWindow.document.title = title;
   printWindow.document.getElementById('pg-title').textContent = title;
   printWindow.document.getElementById('pg-body').textContent = body;
+  printWindow.document.getElementById('pg-close').addEventListener('click', () => {
+    printWindow.close();
+  });
 
   printWindow.focus();
   printWindow.print();
