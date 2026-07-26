@@ -687,60 +687,6 @@ body.app-has-nav .recipe-detail-page .admin-header {
   white-space: pre-wrap;
 }
 
-#print-grocery-view {
-  display: none;
-}
-
-@media print {
-  body.print-grocery-mode * {
-    visibility: hidden !important;
-  }
-
-  /* iOS Safari renders position:fixed + backdrop-filter elements as a
-     composited screenshot even when an ancestor is visibility:hidden.
-     Force them out of the fixed/blur paint path so print falls back to
-     plain document flow instead of leaking the app UI onto the page. */
-  body.print-grocery-mode .overlay,
-  body.print-grocery-mode .fd-app-bottom-bar,
-  body.print-grocery-mode .fd-app-sidebar,
-  body.print-grocery-mode .fd-more-sheet {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    display: none !important;
-    position: static !important;
-  }
-
-  body.print-grocery-mode #print-grocery-view,
-  body.print-grocery-mode #print-grocery-view * {
-    visibility: visible !important;
-  }
-
-  body.print-grocery-mode #print-grocery-view {
-    background: #fff;
-    color: #111;
-    display: block;
-    left: 0;
-    min-height: 100vh;
-    padding: 12mm;
-    position: absolute;
-    top: 0;
-    width: 100%;
-  }
-
-  #print-grocery-title {
-    font-size: 1.6rem;
-    margin-bottom: 0.75rem;
-  }
-
-  #print-grocery-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 1rem;
-    line-height: 1.45;
-    margin: 0;
-    white-space: pre-wrap;
-  }
-}
-
 @media (min-width: 980px) {
   .meal-admin-layout {
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);

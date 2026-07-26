@@ -216,37 +216,36 @@ function printMagicGrocery() {
   const title = lastGroceryList.title || 'Weekly Grocery List';
   const body = document.getElementById('magic-grocery-list').textContent || '';
 
-  document.getElementById('print-grocery-title').textContent = title;
-  document.getElementById('print-grocery-body').textContent = body;
-
-  let cleaned = false;
-  const cleanup = () => {
-    if (cleaned) return;
-    cleaned = true;
-    document.body.classList.remove('print-grocery-mode');
-  };
-
-  document.body.classList.add('print-grocery-mode');
-  window.addEventListener('afterprint', cleanup, { once: true });
-
-  // iOS Safari doesn't reliably fire `afterprint`, and a plain `focus`
-  // listener fires too early (the print sheet's own presentation blurs
-  // and immediately refocuses the page before the user does anything,
-  // reverting print-grocery-mode while the sheet is still open). Track
-  // the print media query instead so cleanup only runs once the browser
-  // has actually left print context.
-  if (window.matchMedia) {
-    const mql = window.matchMedia('print');
-    const onChange = (e) => {
-      if (!e.matches) {
-        cleanup();
-        mql.removeEventListener('change', onChange);
-      }
-    };
-    mql.addEventListener('change', onChange);
+  // Print an isolated document in its own window instead of toggling a
+  // print-mode class on the live app page. iOS Safari's print pipeline
+  // doesn't reliably hide the app's fixed-position/backdrop-filter
+  // elements (nav bars, modal overlay) even after a genuine "leaving
+  // print" signal, so anything printed from the same document as the
+  // app UI is liable to render app screenshots instead of plain text.
+  // A blank popup has nothing else in it to leak through.
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    setStatus('Enable pop-ups to use the print view.', true);
+    return;
   }
 
-  window.print();
+  printWindow.document.write(
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
+    'color:#111;background:#fff;padding:12mm;margin:0;}' +
+    'h1{font-size:1.6rem;margin:0 0 0.75rem;}' +
+    'pre{font-family:inherit;font-size:1rem;line-height:1.45;margin:0;white-space:pre-wrap;}' +
+    '</style></head><body><h1 id="pg-title"></h1><pre id="pg-body"></pre></body></html>'
+  );
+  printWindow.document.close();
+
+  printWindow.document.title = title;
+  printWindow.document.getElementById('pg-title').textContent = title;
+  printWindow.document.getElementById('pg-body').textContent = body;
+
+  printWindow.focus();
+  printWindow.print();
 }
 
 // ── Render ────────────────────────────────────────────────────
