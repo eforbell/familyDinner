@@ -216,17 +216,49 @@ function printMagicGrocery() {
   const title = lastGroceryList.title || 'Weekly Grocery List';
   const body = document.getElementById('magic-grocery-list').textContent || '';
 
-  document.getElementById('print-grocery-title').textContent = title;
-  document.getElementById('print-grocery-body').textContent = body;
+  // Print an isolated document in its own window instead of toggling a
+  // print-mode class on the live app page. iOS Safari's print pipeline
+  // doesn't reliably hide the app's fixed-position/backdrop-filter
+  // elements (nav bars, modal overlay) even after a genuine "leaving
+  // print" signal, so anything printed from the same document as the
+  // app UI is liable to render app screenshots instead of plain text.
+  // A blank popup has nothing else in it to leak through.
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    setStatus('Enable pop-ups to use the print view.', true);
+    return;
+  }
 
-  const cleanup = () => {
-    document.body.classList.remove('print-grocery-mode');
-  };
+  printWindow.document.write(
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '<style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
+    'color:#111;background:#fff;margin:0;}' +
+    '.pg-toolbar{padding:calc(env(safe-area-inset-top,0px) + 0.6rem) 12mm 0.6rem;' +
+    'display:flex;justify-content:flex-end;}' +
+    '.pg-close{font:inherit;font-size:0.95rem;font-weight:600;padding:0.5rem 1rem;' +
+    'border:1px solid #ccc;border-radius:8px;background:#f4f4f4;color:#111;}' +
+    '.pg-content{padding:0 12mm 12mm;}' +
+    'h1{font-size:1.6rem;margin:0 0 0.75rem;}' +
+    'pre{font-family:inherit;font-size:1rem;line-height:1.45;margin:0;white-space:pre-wrap;}' +
+    '@media print{.pg-toolbar{display:none;}}' +
+    '</style></head><body>' +
+    '<div class="pg-toolbar"><button type="button" class="pg-close" id="pg-close">Close</button></div>' +
+    '<div class="pg-content"><h1 id="pg-title"></h1><pre id="pg-body"></pre></div>' +
+    '</body></html>'
+  );
+  printWindow.document.close();
 
-  document.body.classList.add('print-grocery-mode');
-  window.addEventListener('afterprint', cleanup, { once: true });
-  window.addEventListener('focus', cleanup, { once: true });
-  window.print();
+  printWindow.document.title = title;
+  printWindow.document.getElementById('pg-title').textContent = title;
+  printWindow.document.getElementById('pg-body').textContent = body;
+  printWindow.document.getElementById('pg-close').addEventListener('click', () => {
+    printWindow.close();
+  });
+
+  printWindow.focus();
+  printWindow.print();
 }
 
 // ── Render ────────────────────────────────────────────────────
