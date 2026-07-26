@@ -219,13 +219,33 @@ function printMagicGrocery() {
   document.getElementById('print-grocery-title').textContent = title;
   document.getElementById('print-grocery-body').textContent = body;
 
+  let cleaned = false;
   const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
     document.body.classList.remove('print-grocery-mode');
   };
 
   document.body.classList.add('print-grocery-mode');
   window.addEventListener('afterprint', cleanup, { once: true });
-  window.addEventListener('focus', cleanup, { once: true });
+
+  // iOS Safari doesn't reliably fire `afterprint`, and a plain `focus`
+  // listener fires too early (the print sheet's own presentation blurs
+  // and immediately refocuses the page before the user does anything,
+  // reverting print-grocery-mode while the sheet is still open). Track
+  // the print media query instead so cleanup only runs once the browser
+  // has actually left print context.
+  if (window.matchMedia) {
+    const mql = window.matchMedia('print');
+    const onChange = (e) => {
+      if (!e.matches) {
+        cleanup();
+        mql.removeEventListener('change', onChange);
+      }
+    };
+    mql.addEventListener('change', onChange);
+  }
+
   window.print();
 }
 
