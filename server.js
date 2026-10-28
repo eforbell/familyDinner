@@ -27,6 +27,9 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Loopback unless HOST says otherwise: under Home Base only nginx should reach the app, never the tailnet
+// directly (Feature-10 SID-002). Set HOST=0.0.0.0 to expose it on purpose.
+const LISTEN_HOST = process.env.HOST || '127.0.0.1';
 const DEFAULT_SOVEREIGN_FONT_SANS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap';
 const DEFAULT_SOVEREIGN_FONT_MONO_CSS_URL = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap';
 
@@ -3169,9 +3172,9 @@ app.get('/recipes/:id', (req, res) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🍽️  Family Dinner running → http://0.0.0.0:${PORT}`);
-    console.log(`   Tonight display → http://0.0.0.0:${PORT}/tonight`);
+  app.listen(PORT, LISTEN_HOST, () => {
+    console.log(`🍽️  Family Dinner running → http://${LISTEN_HOST}:${PORT}`);
+    console.log(`   Tonight display → http://${LISTEN_HOST}:${PORT}/tonight`);
   });
 }
 
