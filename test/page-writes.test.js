@@ -40,7 +40,7 @@ function closingParen(text, open) {
 // Every fetch(...) call in the text, with its whole argument list.
 function fetchCalls(text) {
   const calls = [];
-  for (const match of text.matchAll(/\bfetch\(/g)) {
+  for (const match of text.matchAll(/\bfetch\s*\(/g)) {
     const open = match.index + match[0].length - 1;
     calls.push(text.slice(match.index, closingParen(text, open) + 1));
   }
@@ -69,6 +69,10 @@ test('every page write says it is JSON, even with no body', () => {
   let writes = 0;
   for (const [name, text] of pageSources()) {
     for (const call of fetchCalls(text)) {
+      // Options must be written inline, where this can read them: a second argument that isn't an object literal
+      // (options held in a variable) can't be checked, so it isn't allowed.
+      const args = call.slice(call.indexOf('(') + 1);
+      assert.ok(!/^[^,]*,\s*[A-Za-z_$]/.test(args) || /^[^,]*,\s*\{/.test(args), `${name}: fetch options must be inline: ${call.replace(/\s+/g, ' ')}`);
       if (!NAMES_METHOD.test(call) || LITERAL_GET.test(call)) continue;
       writes += 1;
       assert.match(call, JSON_TYPE, `${name}: ${call.replace(/\s+/g, ' ')}`);
@@ -80,7 +84,8 @@ test('every page write says it is JSON, even with no body', () => {
 
 test('pages write only through fetch: no form posts, uploads or beacons', () => {
   for (const [name, text] of pageSources()) {
-    assert.doesNotMatch(text, /<form[^>]*\bmethod=/i, `${name}: a form that submits itself`);
+    assert.doesNotMatch(text, /<form[^>]*\bmethod\s*=/i, `${name}: a form that submits itself`);
+    assert.doesNotMatch(text, /\bformmethod\s*=/i, `${name}: a button that submits its form`);
     assert.doesNotMatch(text, /\bnew FormData\b|\bXMLHttpRequest\b|\bsendBeacon\b/, name);
   }
 });
