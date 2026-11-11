@@ -39,15 +39,26 @@ class Db {
     if (sql.includes('FROM family_members WHERE suite_member_id = $1')) return { rows: this.rows.filter((row) => row.suite_member_id === params[0]) };
     if (sql.includes('FROM family_members ORDER BY id')) return { rows: this.rows };
     if (/COUNT\(\*\)::int AS count FROM/.test(sql)) return { rows: [{ count: 2 }] };
+    // Autofill from the previous week: Monday had meal 5; nothing planned yet this week.
+    if (sql.includes('p.meal_id IS NOT NULL')) return { rows: [{ plan_date: TODAY, meal_id: 5, day_of_week: 1 }] };
+    if (sql.includes('AS date_to_skip')) return { rows: [] };
     if (sql.includes('FROM plan_days p') && sql.includes('BETWEEN')) {
       return { rows: [{ plan_date: TODAY, plan_note: null, id: 5, name: 'Tacos', is_protected: false, notes: '', equipment: [] }] };
     }
     if (sql.includes('FROM plan_days p') && sql.includes('p.plan_date = $1')) return { rows: [{ id: 5, name: 'Tacos', is_protected: true }] };
     if (sql.includes('SELECT * FROM order_in_nights WHERE order_date = $1')) return { rows: [{ id: 9, order_date: params[0] }] };
+    if (sql.includes('SELECT 1 FROM meals WHERE id = $1')) return { rows: [{ '?column?': 1 }] };
+    if (sql.includes('FROM restaurants') && sql.includes('WHERE lower(name) = lower($1)')) {
+      return { rows: (this.restaurants || []).filter((r) => r.name.toLowerCase() === String(params[0]).toLowerCase()) };
+    }
+    if (sql.includes('SELECT created_by_member_id FROM recipes WHERE id = $1')) return { rows: params[0] === 7 ? [{ created_by_member_id: 1 }] : [] };
     if (/^\s*(INSERT|UPDATE|DELETE)/.test(sql)) {
       this.writes.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
+      sql = sql.trim();
       if (sql.includes('INSERT INTO tonight_addons')) return { rows: [{ addon_date: params[0], note: params[1], updated_by: params[2] }] };
       if (sql.includes('INSERT INTO restaurants')) return { rows: [{ id: 77 }] };
+      if (sql.includes('INSERT INTO recipes')) return { rows: [{ id: 11 }], rowCount: 1 };
+      if (sql.startsWith('UPDATE recipes')) return { rows: [], rowCount: 1 };
       return { rows: [] };
     }
     return { rows: [] };
@@ -56,9 +67,12 @@ class Db {
 }
 
 const ORIGINAL_QUERY = pool.query;
+const ORIGINAL_CONNECT = pool.connect;
 async function withServer(env, db, fn) {
   setSuiteIdentityForTests(env, env.SOVEREIGN_AUTH_MODE ? { reader: snapshotOf(MEMBERS) } : {});
   pool.query = db.query.bind(db);
+  // Transactions (saving a recipe) use a client: the same stand-in.
+  pool.connect = async () => ({ query: async (sql, params) => (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) ? { rows: [] } : db.query(sql, params)), release() {} });
   const server = app.listen(0, '127.0.0.1');
   try {
     await new Promise((resolve) => server.once('listening', resolve));
@@ -73,6 +87,7 @@ async function withServer(env, db, fn) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
     pool.query = ORIGINAL_QUERY;
+    pool.connect = ORIGINAL_CONNECT;
     setSuiteIdentityForTests({});
   }
 }
@@ -193,5 +208,68 @@ test('Tonight knows who is looking in tailnet mode, safely, and links to the wee
   await withServer({}, new Db(), async (call) => {
     const html = await (await call('GET', '/tonight', {})).text();
     assert.match(html, /const SUITE_ME = null;/);
+  });
+});
+
+test('a reaction is one of the four the pages offer: it is shown to everyone who opens the week', async () => {
+  for (const env of [TAILNET, {}]) {
+    const db = new Db();
+    await withServer(env, db, async (call) => {
+      const headers = env.SOVEREIGN_AUTH_MODE ? KID_HEADERS : {};
+      for (const reaction of ['<img src=x onerror=alert(1)>', '👍👍', 'x', '❤']) {
+        const res = await call('POST', '/api/vote', headers, { meal_id: 5, member_id: 2, reaction, meal_date: TODAY });
+        assert.equal(res.status, 400, reaction);
+      }
+      assert.equal(db.written('meal_votes').length, 0);
+      for (const reaction of ['❤️', '👍', '👎', '🤷']) {
+        assert.equal((await call('POST', '/api/vote', headers, { meal_id: 5, member_id: 2, reaction, meal_date: TODAY })).status, 200, reaction);
+      }
+    });
+  }
+});
+
+test('a kid\'s write-in is a vote: it may add a place, but not bring back or rename one a parent took off the list', async () => {
+  const db = new Db();
+  db.restaurants = [{ id: 3, name: 'Taco Spot', active: true }, { id: 4, name: 'Old Diner', active: false }];
+  await withServer(TAILNET, db, async (call) => {
+    const writeIn = (headers, body) => call('POST', `/api/order-in/${TODAY}/write-in`, headers, body);
+    const retired = await writeIn(KID_HEADERS, { name: 'old diner', emoji: '🍔' });
+    assert.equal(retired.status, 409);
+    assert.equal((await retired.json()).code, 'restaurant_retired');
+    // A listed place, as it is: the vote, and no change to the place.
+    assert.equal((await writeIn(KID_HEADERS, { name: 'TACO SPOT', emoji: '💥' })).status, 200);
+    assert.equal(db.writes.filter((write) => write.sql.startsWith('UPDATE restaurants')).length, 0);
+    assert.deepEqual(db.written('restaurant_votes').map((write) => write.params.slice(1)), [[3, 2]]);
+    // A new place: added, and voted for.
+    assert.equal((await writeIn(KID_HEADERS, { name: 'Noodle place' })).status, 200);
+    assert.equal(db.written('restaurants').length, 1);
+    // A parent's write-in may still bring one back, as before.
+    assert.equal((await writeIn(PARENT_HEADERS, { name: 'Old Diner' })).status, 200);
+    assert.equal(db.writes.filter((write) => write.sql.startsWith('UPDATE restaurants')).length, 1);
+  });
+});
+
+test('in tailnet mode what a parent plans or creates is signed with their own linked member', async () => {
+  const db = new Db();
+  await withServer(TAILNET, db, async (call) => {
+    const forged = 'Someone else';
+    assert.equal((await call('PUT', '/api/plan/day', PARENT_HEADERS, { date: TODAY, meal_id: 5, created_by: forged })).status, 200);
+    assert.equal((await call('PUT', '/api/swap', PARENT_HEADERS, { date: TODAY, meal_id: 5, created_by: forged })).status, 200);
+    assert.equal((await call('POST', '/api/order-in', PARENT_HEADERS, { date: TODAY, created_by: forged })).status, 200);
+    const monday = new Date(); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const autofill = await call('POST', '/api/plan/autofill', PARENT_HEADERS, { week_start: localDateString(monday), source: 'previous_week', created_by: forged });
+    assert.equal(autofill.status, 200);
+    const signed = db.writes.filter((write) => /INTO (plan_days|order_in_nights)/.test(write.sql)).map((write) => write.params.at(-1));
+    assert.deepEqual(signed, ['Parent', 'Parent', 'Parent', 'Parent']);
+
+    const recipe = { title: 'Soup', ingredients: ['water'], steps: ['Boil'], created_by_member_id: 2 };
+    // Both reach the save (the stand-in database then can't read the recipe back, so the answer itself isn't checked).
+    assert.notEqual((await call('POST', '/api/recipes', PARENT_HEADERS, recipe)).status, 400);
+    assert.notEqual((await call('PUT', '/api/recipes/7', PARENT_HEADERS, recipe)).status, 404);
+    // created_by_member_id is $13 of the INSERT and $14 of the UPDATE.
+    const creators = db.writes.filter((write) => /^(INSERT INTO|UPDATE) recipes/.test(write.sql))
+      .map((write) => (write.sql.startsWith('INSERT') ? write.params[12] : write.params[13]));
+    assert.deepEqual(creators, [1, 1], 'new: the requester; edited: who created it, not who the request names');
+    assert.equal((await call('PUT', '/api/recipes/8', PARENT_HEADERS, recipe)).status, 404);
   });
 });

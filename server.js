@@ -2133,7 +2133,7 @@ app.put('/api/plan/day', async (req, res) => {
       date,
       mealId,
       req.body?.note ? String(req.body.note) : null,
-      req.body?.created_by ? String(req.body.created_by) : null
+      actingMemberName(req, req.body?.created_by ? String(req.body.created_by) : null)
     );
     res.json({ success: true, date, meal: await mealForDate(parseDateOnly(date)) });
   } catch (err) {
@@ -2150,7 +2150,7 @@ app.post('/api/plan/autofill', async (req, res) => {
 
   const source = req.body?.source === 'previous_week' ? 'previous_week' : 'rotation';
   const overwrite = Boolean(req.body?.overwrite);
-  const createdBy = req.body?.created_by ? String(req.body.created_by) : null;
+  const createdBy = actingMemberName(req, req.body?.created_by ? String(req.body.created_by) : null);
 
   try {
     const monday = mondayOf(parseDateOnly(weekStart));
@@ -2328,6 +2328,8 @@ app.post('/api/recipes', async (req, res) => {
   const recipe = normalizeRecipePayload(req.body);
   const validationError = validateRecipePayload(recipe);
   if (validationError) return res.status(400).json({ error: validationError });
+  // In tailnet mode the recipe is the requester's, whoever the request names.
+  if (suite.tailnet) recipe.created_by_member_id = req.familyMember.id;
 
   try {
     const recipeId = await saveRecipe(recipe);
@@ -2363,6 +2365,12 @@ app.put('/api/recipes/:id', async (req, res) => {
   if (validationError) return res.status(400).json({ error: validationError });
 
   try {
+    // In tailnet mode an edit keeps who created the recipe; the request can't change it.
+    if (suite.tailnet) {
+      const { rows } = await pool.query('SELECT created_by_member_id FROM recipes WHERE id = $1', [recipeId]);
+      if (!rows.length) return res.status(404).json({ error: 'Not found' });
+      recipe.created_by_member_id = rows[0].created_by_member_id;
+    }
     const savedRecipeId = await saveRecipe(recipe, recipeId);
     if (!savedRecipeId) return res.status(404).json({ error: 'Not found' });
     res.json(await getRecipeById(savedRecipeId));
@@ -2786,7 +2794,7 @@ app.put('/api/swap', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT 1 FROM meals WHERE id = $1', [mealId]);
     if (!rows.length) return res.status(404).json({ error: 'meal not found' });
-    await upsertPlanDay(date, mealId, note || null, created_by || null);
+    await upsertPlanDay(date, mealId, note || null, actingMemberName(req, created_by || null));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2885,12 +2893,18 @@ app.put('/api/suite/links/:id', requireSuiteParent, async (req, res) => {
   }
 });
 
+// The reactions the pages offer. Anything else is refused: a reaction is shown to everyone who opens the week.
+const MEAL_REACTIONS = new Set(['❤️', '👍', '👎', '🤷']);
+
 // POST /api/vote — react to a meal
 app.post('/api/vote', async (req, res) => {
   const { meal_id, reaction, meal_date } = req.body;
   const member_id = actingMemberId(req, req.body.member_id);
   if (!meal_id || !member_id || !reaction) {
     return res.status(400).json({ error: 'meal_id, member_id, and reaction required' });
+  }
+  if (!MEAL_REACTIONS.has(reaction)) {
+    return res.status(400).json({ error: 'reaction must be one of ❤️ 👍 👎 🤷' });
   }
 
   try {
@@ -3082,7 +3096,7 @@ app.post('/api/order-in', async (req, res) => {
       `INSERT INTO order_in_nights (order_date, created_by)
        VALUES ($1, $2)
        ON CONFLICT (order_date) DO NOTHING`,
-      [date, created_by || null]
+      [date, actingMemberName(req, created_by || null)]
     );
     res.json({ success: true, order_in: await orderInForDate(date) });
   } catch (err) {
@@ -3165,7 +3179,7 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
 
     let restaurantId = null;
     const { rows: existingRows } = await pool.query(
-      `SELECT id
+      `SELECT id, active
        FROM restaurants
        WHERE lower(name) = lower($1)
        ORDER BY active DESC, id ASC
@@ -3173,7 +3187,15 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
       [writeIn.name]
     );
 
-    if (existingRows.length) {
+    // In tailnet mode a kid's write-in is a vote, and may add a new place, but the list itself is a parent's: a kid
+    // votes for a listed place as it is, and can't bring back one a parent took off the list.
+    const kid = suite.tailnet && req.suiteMember.role !== 'parent';
+    if (kid && existingRows.length && !existingRows[0].active) {
+      return res.status(409).json({ error: 'A parent took that one off the list', code: 'restaurant_retired' });
+    }
+    if (kid && existingRows.length) {
+      restaurantId = existingRows[0].id;
+    } else if (existingRows.length) {
       restaurantId = existingRows[0].id;
       await pool.query(
         `UPDATE restaurants
