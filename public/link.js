@@ -11,15 +11,19 @@ function setLinkStatus(message, isError = false) {
   el.className = isError ? 'admin-status error' : 'admin-status';
 }
 
-async function loadLinks() {
+// Reloads the list from the server, which is what the pickers show; problem, if given, is shown after it.
+async function loadLinks(problem) {
   try {
     const res = await fetch('api/suite/links', { cache: 'no-store' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not load household members');
     linkState = data;
     renderLinks();
+    if (problem) setLinkStatus(problem, true);
   } catch (err) {
-    setLinkStatus(err.message, true);
+    setLinkStatus(problem || err.message, true);
+    // Leave the pickers usable, so the parent can try again.
+    document.querySelectorAll('#link-rows select').forEach(select => { select.disabled = false; });
   }
 }
 
@@ -102,10 +106,9 @@ async function saveLink(member, select) {
       body: JSON.stringify({ suite_member_id: select.value || null }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Could not save');
-    await loadLinks();
+    // Refused or not, the server's list is what the pickers show next, so a refused choice doesn't linger.
+    await loadLinks(res.ok ? undefined : (data.error || 'Could not save'));
   } catch (err) {
-    setLinkStatus(err.message, true);
-    select.disabled = false;
+    await loadLinks(err.message);
   }
 }

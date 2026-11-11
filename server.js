@@ -536,6 +536,8 @@ app.get('/sovereign-fonts.css', (_req, res) => {
   res.send(buildSovereignFontsCss());
 });
 
+// The link page is served by its route (/link), which checks the directory's role; its file is not a static page.
+app.get('/link.html', (_req, res) => res.redirect(303, 'link'));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 function createRecipeResponseSchema() {

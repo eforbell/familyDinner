@@ -82,6 +82,12 @@ test('a parent links Dinner members to household members; nobody else can', asyn
       body: JSON.stringify({ suite_member_id: suiteMemberId }),
     });
 
+    // The page's file is never served as a static page, around the route's check: it redirects to the route.
+    for (const headers of [PARENT_HEADERS, KID_HEADERS, {}]) {
+      const file = await get('/link.html', headers);
+      assert.notEqual(file.status, 200);
+    }
+    assert.match((await get('/link.html', PARENT_HEADERS)).headers.get('location'), /(^|\/)link$/);
     // A parent nobody has linked opens the link page and its list.
     const page = await get('/link', PARENT_HEADERS);
     assert.equal(page.status, 200);
@@ -150,6 +156,7 @@ test('the link page is tailnet-only, and needs the directory', async () => {
     const put = await fetch(`${base}/api/suite/links/1`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{"suite_member_id":"m_parent"}' });
     assert.equal(put.status, 404);
     assert.equal((await fetch(`${base}/link`)).status, 404);
+    assert.equal((await fetch(`${base}/link.html`, { redirect: 'manual' })).status, 303);
   });
   // The directory went away after the gate let the parent in (a snapshot that reads once, then fails).
   let reads = 0;
