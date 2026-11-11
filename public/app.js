@@ -227,7 +227,7 @@ function buildDayCard(day) {
   let mealHtml;
   if (isOrderIn) {
     const leader = orderIn && orderIn.votes && orderIn.votes.find(v => v.count > 0);
-    mealHtml = `<span class="day-meal-name order-in-label">🛵 Order In${leader ? ` · ${leader.emoji} ${leader.name}` : ''}</span>`;
+    mealHtml = `<span class="day-meal-name order-in-label">🛵 Order In${leader ? ` · ${esc(leader.emoji || '')} ${esc(leader.name)}` : ''}</span>`;
   } else if (!meal) {
     mealHtml = '<span class="day-meal-name muted">—</span>';
   } else {
@@ -235,8 +235,8 @@ function buildDayCard(day) {
   }
 
   const metaHtml = meal && !isOrderIn
-    ? `<span style="font-size:1rem">${meal.cook || ''}</span>
-       <span style="font-size:0.95rem">${ratingEmoji(meal.kid_rating)}</span>
+    ? `<span style="font-size:1rem">${esc(meal.cook || '')}</span>
+       <span style="font-size:0.95rem">${esc(ratingEmoji(meal.kid_rating))}</span>
        ${meal.is_new ? '<span class="new-badge">★ NEW</span>' : ''}`
     : '';
 
@@ -384,7 +384,7 @@ async function refreshVoteDisplay(displayId, mealId, btnContainerId, votes) {
 
   // Show vote pills
   display.innerHTML = votes.map(v =>
-    `<span class="vote-pill">${v.avatar_emoji} ${v.reaction}</span>`
+    `<span class="vote-pill">${esc(v.avatar_emoji || '')} ${esc(v.reaction)}</span>`
   ).join('');
 }
 
@@ -454,8 +454,8 @@ async function loadAndShowMembers() {
     }
     grid.innerHTML = membersCache.map(m =>
       `<button class="member-btn" onclick="selectMember(${m.id})">
-        <span class="member-avatar">${m.avatar_emoji}</span>
-        <span>${m.name}</span>
+        <span class="member-avatar">${esc(m.avatar_emoji || '')}</span>
+        <span>${esc(m.name)}</span>
       </button>`
     ).join('');
   } catch (e) {
@@ -698,7 +698,8 @@ function esc(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function fmtTime(mins) {
@@ -739,8 +740,8 @@ function buildMetaBadges(meal) {
   const cls  = kidRatingClass(meal.kid_rating);
   const desc = kidRatingDesc(meal.kid_rating);
   return [
-    meal.cook        ? `<span class="cook-badge">${meal.cook}</span>` : '',
-    meal.kid_rating  ? `<span class="kid-badge ${cls}" title="${desc}">${ratingEmoji(meal.kid_rating)} ${desc}</span>` : '',
+    meal.cook        ? `<span class="cook-badge">${esc(meal.cook)}</span>` : '',
+    meal.kid_rating  ? `<span class="kid-badge ${esc(cls)}" title="${esc(desc)}">${esc(ratingEmoji(meal.kid_rating))} ${esc(desc)}</span>` : '',
     meal.is_new      ? '<span class="new-badge">★ NEW</span>' : '',
   ].filter(Boolean).join('');
 }
