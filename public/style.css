@@ -747,3 +747,8 @@ select:focus { outline: 2px solid var(--accent); border-color: transparent; }
 .meal-admin-layout.recipe-layout {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* Suite identity (tailnet mode, set by nav.js): Home Base says who you are, so there's no picker; a kid's pages
+   don't offer what only a parent may do (the server refuses it anyway). */
+.fd-tailnet #who-btn { display: none !important; }
+.fd-kid .fd-parent-only { display: none !important; }

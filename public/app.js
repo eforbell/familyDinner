@@ -6,19 +6,35 @@ let membersCache  = [];
 let todayDate     = null;
 let tonightMealId = null;
 let weekOffset    = 0;
+// Tailnet mode: Home Base says who this is (api/me), and the picker never opens.
+let suiteTailnet  = false;
 
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadSuiteMember();
   updateWhoBtn();
   wireWeekPaging();
   wireTonightScratchpad();
   await loadWeek();
 
-  if (!currentMember) {
+  if (!currentMember && !suiteTailnet) {
     // First visit — show member picker after a brief delay so the page renders
     setTimeout(openMemberPicker, 400);
   }
 });
+
+async function loadSuiteMember() {
+  try {
+    const res = await fetch('api/me', { cache: 'no-store' });
+    if (!res.ok) return;
+    const me = await res.json();
+    if (me.mode !== 'tailnet' || !me.member) return;
+    suiteTailnet = true;
+    currentMember = me.member;
+  } catch {
+    // Local mode on an older server, or offline: the picker as before.
+  }
+}
 
 // ── Data Fetching ─────────────────────────────────────────────
 async function loadWeek() {
@@ -254,7 +270,7 @@ function buildDayExpandHtml(day) {
         ${buildRestaurantVotesHtml(orderIn, day.date)}
       </div>
       ${meal && meal.is_protected ? '' : `
-      <div class="day-actions" style="margin-top:.75rem">
+      <div class="day-actions fd-parent-only" style="margin-top:.75rem">
         <button class="btn-danger" onclick="cancelOrderIn('${day.date}')">Cancel order-in</button>
       </div>`}
     `;
@@ -268,7 +284,7 @@ function buildDayExpandHtml(day) {
   if (!meal) {
     return `
       <p class="muted" style="font-size:.85rem;margin-bottom:.75rem">Nothing planned yet.</p>
-      <div class="day-actions">
+      <div class="day-actions fd-parent-only">
         <button class="btn-swap" onclick="openSwap('${day.date}')">Pick a meal</button>
         <a class="btn-ghost" href="plan">Plan the week</a>
         <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
@@ -290,8 +306,8 @@ function buildDayExpandHtml(day) {
     <div class="day-actions" style="margin-top:.75rem">
       <div class="vote-buttons" id="day-votes-${day.date}"></div>
       ${meal.recipe_id ? `<a class="btn-ghost" href="recipes/${meal.recipe_id}">Recipe</a>` : ''}
-      <button class="btn-swap" onclick="openSwap('${day.date}')">Swap ⇄</button>
-      <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
+      <button class="btn-swap fd-parent-only" onclick="openSwap('${day.date}')">Swap ⇄</button>
+      <button class="btn-order-in fd-parent-only" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
     </div>
     <div class="day-vote-display" id="day-vote-display-${day.date}"></div>
   `;
@@ -420,6 +436,7 @@ function openSwap(date) {
 let onMemberPickedCallback = null;
 
 function openMemberPicker(callback) {
+  if (suiteTailnet) return;
   onMemberPickedCallback = callback || null;
   loadAndShowMembers();
   document.getElementById('member-overlay').classList.remove('hidden');
