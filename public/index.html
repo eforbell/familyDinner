@@ -59,10 +59,10 @@
               Details ▾
             </button>
             <a id="tonight-recipe-link" class="btn-ghost hidden" href="#">Open recipe</a>
-            <button class="btn-swap" onclick="openSwap(todayDate, 'tonight')">
+            <button class="btn-swap fd-parent-only" onclick="openSwap(todayDate, 'tonight')">
               Swap ⇄
             </button>
-            <button id="made-it-btn" class="btn-made-it" onclick="logMadeIt()">
+            <button id="made-it-btn" class="btn-made-it fd-parent-only" onclick="logMadeIt()">
               ✓ We made it
             </button>
           </div>
@@ -72,9 +72,9 @@
             <div id="tonight-timing" class="detail-timing"></div>
             <div id="tonight-equipment" class="detail-equipment"></div>
             <div id="tonight-scratchpad" class="tonight-scratchpad">
-              <label for="tonight-scratchpad-input" class="vote-label">Tonight scratchpad (does not edit meal)</label>
-              <textarea id="tonight-scratchpad-input" rows="2" placeholder="Add special sides, hype text, or notes for tonight only."></textarea>
-              <div class="tonight-scratchpad-actions">
+              <label for="tonight-scratchpad-input" class="vote-label fd-parent-only">Tonight scratchpad (does not edit meal)</label>
+              <textarea id="tonight-scratchpad-input" class="fd-parent-only" rows="2" placeholder="Add special sides, hype text, or notes for tonight only."></textarea>
+              <div class="tonight-scratchpad-actions fd-parent-only">
                 <button id="tonight-scratchpad-save" class="btn-ghost" type="button">Save note</button>
                 <button id="tonight-scratchpad-clear" class="btn-ghost" type="button">Clear</button>
               </div>

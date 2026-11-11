@@ -19,7 +19,7 @@
   };
 
   const navItems = [
-    { id: 'week', label: 'Week', icon: 'week', path: '' },
+    { id: 'week', label: 'Week', icon: 'week', path: 'week' },
     { id: 'plan', label: 'Plan', icon: 'planner', path: 'plan' },
     { id: 'recipes', label: 'Recipes', icon: 'recipes', path: 'recipes' },
     { id: 'meals', label: 'Meals', icon: 'meals', path: 'admin/meals' },
@@ -107,4 +107,27 @@
 
   moreButton.addEventListener('click', toggleMoreSheet);
   moreBackdrop.addEventListener('click', closeMoreSheet);
+
+  // Suite identity (tailnet mode): Home Base says who this is, so there's no picker, and a kid sees only their pages.
+  // The server refuses everything else a kid asks for; this only keeps the page from offering it.
+  const KID_NAV = new Set(['week', 'tonight']);
+  fetch(`${navRoot === '..' ? '..' : '.'}/api/me`, { cache: 'no-store' })
+    .then(res => (res.ok ? res.json() : null))
+    .then(me => {
+      if (!me || me.mode !== 'tailnet') return;
+      document.body.classList.add('fd-tailnet');
+      if (!me.member || me.member.role !== 'kid') return;
+      document.body.classList.add('fd-kid');
+      document.querySelectorAll('[data-nav-id]').forEach(link => {
+        if (!KID_NAV.has(link.dataset.navId)) link.remove();
+      });
+      // Week and Tonight both fit the bar, so a kid needs no More sheet.
+      moreButton.remove();
+      if (!bottomBar.querySelector('[data-nav-id="tonight"]')) {
+        const tonight = navItems.find(item => item.id === 'tonight');
+        bottomBar.insertAdjacentHTML('beforeend', navItemHtml(tonight, activePage === 'tonight'));
+      }
+      document.querySelectorAll('.fd-nav-divider').forEach(divider => divider.remove());
+    })
+    .catch(() => {});
 })();
