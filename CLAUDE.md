@@ -88,4 +88,4 @@ node server.js         # or use pm2 / systemd
 # Environment=PORT=3000
 ```
 
-The app binds to `0.0.0.0` so it's reachable from any device on the LAN.
+The app listens on loopback (`HOST` to override) or, under Home Base, on the Unix socket `SOVEREIGN_LISTEN` names (`lib/listen.js`). Members reach it through nginx.

@@ -197,6 +197,10 @@ location = /dinner {
 
 Important: the trailing slash on `proxy_pass http://127.0.0.1:3000/;` is what strips the `/dinner/` prefix before forwarding to Express.
 
+### Where it listens
+
+Without `SOVEREIGN_LISTEN`, the server listens on loopback (`127.0.0.1`, `PORT` default 3000); set `HOST` to change that on purpose. Under Home Base, `SOVEREIGN_LISTEN=unix:/path/app.sock` makes it listen on that Unix socket instead (mode 0660, a stale socket from a crashed run is replaced). Set at all, even blank, it must name a socket: the server refuses to start rather than fall back to TCP.
+
 ## Notes
 
 - The 3-week plan repeats forever until you edit `meal_rotation`
