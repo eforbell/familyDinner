@@ -307,7 +307,7 @@ async function deleteRecipe() {
   if (!window.confirm('Delete this recipe? Linked meals will stay in the meal library without this recipe link.')) return;
 
   try {
-    const res = await fetch(`../api/recipes/${selectedRecipeId}`, { method: 'DELETE' });
+    const res = await fetch(`../api/recipes/${selectedRecipeId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 
@@ -325,7 +325,7 @@ async function deleteRecipe() {
 async function createMealFromRecipe() {
   if (!selectedRecipeId) return;
   try {
-    const res = await fetch(`../api/recipes/${selectedRecipeId}/create-meal`, { method: 'POST' });
+    const res = await fetch(`../api/recipes/${selectedRecipeId}/create-meal`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not create meal');
     const message = data.created ? 'Meal created from recipe.' : 'Recipe already has a linked meal.';

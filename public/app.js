@@ -406,7 +406,7 @@ function openSwap(date) {
             }),
           });
         } else {
-          await fetch(`api/swap/${date}`, { method: 'DELETE' });
+          await fetch(`api/swap/${date}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
         }
         await loadWeek();
       } catch (e) {
@@ -513,7 +513,7 @@ async function declareOrderIn(date) {
 
 async function cancelOrderIn(date) {
   try {
-    await fetch(`api/order-in/${date}`, { method: 'DELETE' });
+    await fetch(`api/order-in/${date}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     await loadWeek();
   } catch (e) {
     console.error('Failed to cancel order-in', e);

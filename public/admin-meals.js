@@ -232,7 +232,7 @@ async function deleteMeal() {
   if (!window.confirm('Delete this meal? This only works if it is not used anywhere yet.')) return;
 
   try {
-    const res = await fetch(`../api/meals/${selectedMealId}`, { method: 'DELETE' });
+    const res = await fetch(`../api/meals/${selectedMealId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 

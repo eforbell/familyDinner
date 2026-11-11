@@ -123,7 +123,7 @@ async function toggleOrderIn(date, on) {
         body: JSON.stringify({ date, created_by: currentMember ? currentMember.name : null }),
       });
     } else {
-      await fetch(`api/order-in/${date}`, { method: 'DELETE' });
+      await fetch(`api/order-in/${date}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     }
     await loadPlan();
   } catch (err) {
