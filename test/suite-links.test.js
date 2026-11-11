@@ -134,11 +134,12 @@ test('a parent links Dinner members to household members; nobody else can', asyn
     assert.equal((await get('/api/members', KID_HEADERS)).status, 200);
     const kidLink = await link(3, null, KID_HEADERS);
     assert.equal(kidLink.status, 403);
-    assert.equal((await kidLink.json()).code, 'parent_required');
+    // The gate's kid allowlist refuses it first; the route's own parent check stands behind it.
+    assert.equal((await kidLink.json()).code, 'parent_only');
     assert.equal((await get('/api/suite/links', KID_HEADERS)).status, 403);
     const kidPage = await get('/link', KID_HEADERS);
-    assert.equal(kidPage.status, 403);
-    assert.doesNotMatch(await kidPage.text(), /link\.js/);
+    assert.equal(kidPage.status, 303);
+    assert.equal(kidPage.headers.get('location'), '/dinner/tonight');
     assert.equal(db.rows[2].suite_member_id, 'm_kid');
 
     // Another parent, linked by the first, may change links too; unlinking frees the household member.

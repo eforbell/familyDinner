@@ -107,6 +107,21 @@ let suite = createSuiteIdentity(process.env, { findLinked: findLinkedMember });
 app.use((req, res, next) => suite.guard(req, res, next));
 app.use((req, res, next) => suite.requireMember(req, res, next));
 
+// In tailnet mode a vote or note is the requester's own: the linked member, never an ID or name the request names.
+// Local mode keeps the picker's choice from the request.
+function actingMemberId(req, requested) {
+  return suite.tailnet ? req.familyMember.id : requested;
+}
+function actingMemberName(req, requested) {
+  return suite.tailnet ? req.familyMember.name : requested;
+}
+// Who the pages are showing, for the Tonight page's script: the linked member in tailnet mode, nobody in local mode.
+function suiteMe(req) {
+  if (!suite.tailnet) return null;
+  const { id, name, avatar_emoji } = req.familyMember;
+  return { id, name, avatar_emoji, role: req.suiteMember.role === 'parent' ? 'parent' : 'kid' };
+}
+
 app.use(express.json());
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -524,7 +539,7 @@ app.use(async (req, res, next) => {
   if (req.method !== 'GET') return next();
   if (req.path.startsWith('/api/')) return next();
   if (req.path === '/setup' || req.path === '/setup.html') return next();
-  if (req.path === '/' || req.path === '/index.html') {
+  if (req.path === '/' || req.path === '/index.html' || req.path === '/week') {
     if (await redirectToSetupIfNeeded(req, res, 'setup')) return;
   }
   return next();
@@ -1513,6 +1528,19 @@ app.get('/', async (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// The week, at its own address: in tailnet mode a kid's / goes to Tonight, so Tonight and the nav link here.
+app.get('/week', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Who the pages are showing. In tailnet mode it's the linked member, with the directory's role, and the pages skip
+// their picker; in local mode there's nobody, and the picker asks.
+app.get('/api/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!suite.tailnet) return res.json({ mode: 'local', member: null });
+  return res.json({ mode: 'tailnet', member: suiteMe(req) });
+});
+
 app.get('/setup', async (req, res) => {
   try {
     const state = await bootstrapState();
@@ -1889,7 +1917,7 @@ app.get('/tonight', async (req, res) => {
   </div>
   ` : ''}
 
-	  <a href="./" class="week-link">see the full week →</a>
+	  <a href="./week" class="week-link">see the full week →</a>
 	  </div>
 
 	  <script src="theme.js"></script>
@@ -1900,7 +1928,9 @@ app.get('/tonight', async (req, res) => {
     const MEAL_ID = ${mealId || 'null'};
     const orderInVotes = ${votesJson};
     const MEAL_REACTIONS = ['❤️', '👍', '👎', '🤷'];
-    let me = JSON.parse(localStorage.getItem('fd_member') || 'null');
+    // Tailnet mode: the linked member, from the server, and no picker. Local mode: whoever this device picked.
+    const SUITE_ME = ${safeScriptJson(suiteMe(req))};
+    let me = SUITE_ME || JSON.parse(localStorage.getItem('fd_member') || 'null');
     let members = [];
 
     async function init() {
@@ -2857,7 +2887,8 @@ app.put('/api/suite/links/:id', requireSuiteParent, async (req, res) => {
 
 // POST /api/vote — react to a meal
 app.post('/api/vote', async (req, res) => {
-  const { meal_id, member_id, reaction, meal_date } = req.body;
+  const { meal_id, reaction, meal_date } = req.body;
+  const member_id = actingMemberId(req, req.body.member_id);
   if (!meal_id || !member_id || !reaction) {
     return res.status(400).json({ error: 'meal_id, member_id, and reaction required' });
   }
@@ -3072,7 +3103,8 @@ app.delete('/api/order-in/:date', async (req, res) => {
 
 // POST /api/order-in/:date/vote — vote for a restaurant
 app.post('/api/order-in/:date/vote', async (req, res) => {
-  const { restaurant_id, member_id } = req.body;
+  const { restaurant_id } = req.body;
+  const member_id = actingMemberId(req, req.body.member_id);
   if (!restaurant_id || !member_id) {
     return res.status(400).json({ error: 'restaurant_id and member_id required' });
   }
@@ -3106,7 +3138,8 @@ app.post('/api/order-in/:date/vote', async (req, res) => {
 });
 
 app.post('/api/order-in/:date/write-in', async (req, res) => {
-  const { member_id, name, emoji } = req.body || {};
+  const { name, emoji } = req.body || {};
+  const member_id = actingMemberId(req, req.body?.member_id);
   if (!member_id) return res.status(400).json({ error: 'member_id is required' });
 
   const writeIn = parseRestaurantWriteIn(name, emoji);
@@ -3180,7 +3213,8 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
 app.put('/api/tonight-addon/:date', async (req, res) => {
   const dateStr = String(req.params.date || '').trim();
   const note = String(req.body?.note || '').trim();
-  const updatedBy = req.body?.updated_by ? String(req.body.updated_by).trim() : null;
+  const requestedBy = req.body?.updated_by ? String(req.body.updated_by).trim() : null;
+  const updatedBy = actingMemberName(req, requestedBy);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return res.status(400).json({ error: 'invalid date format' });
