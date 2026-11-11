@@ -536,6 +536,8 @@ app.get('/sovereign-fonts.css', (_req, res) => {
   res.send(buildSovereignFontsCss());
 });
 
+// The link page is served by its route (/link), which checks the directory's role; its file is not a static page.
+app.get('/link.html', (_req, res) => res.redirect(303, 'link'));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 function createRecipeResponseSchema() {
@@ -2780,6 +2782,75 @@ app.get('/api/members', async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM family_members ORDER BY id');
     res.json(rows);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Linking household members (tailnet mode) ─────────────────────────────────
+// A parent, as Home Base's directory says now, links each Dinner family member to the household member they are.
+// The directory's role is checked on every request; the local row's role never grants this.
+
+function requireSuiteParent(req, res, next) {
+  if (!suite.tailnet) return res.status(404).json({ error: 'Not found' });
+  if (req.suiteMember?.role !== 'parent') {
+    return res.status(403).json({ error: 'Only a parent can link household members', code: 'parent_required' });
+  }
+  return next();
+}
+
+app.get('/link', (req, res, next) => {
+  if (!suite.tailnet) return next();
+  res.set('Cache-Control', 'no-store');
+  if (req.suiteMember?.role !== 'parent') return res.status(403).type('text').send('Only a parent can link household members.');
+  return res.sendFile(path.join(__dirname, 'public', 'link.html'));
+});
+
+app.get('/api/suite/links', requireSuiteParent, async (req, res) => {
+  try {
+    const directory = suite.directory();
+    if (!directory) return res.status(503).json({ error: 'The household directory is unavailable', code: 'directory' });
+    const { rows } = await pool.query('SELECT id, name, role, avatar_emoji, suite_member_id FROM family_members ORDER BY id');
+    res.set('Cache-Control', 'no-store').json({ you: req.suiteMember.memberId, directory, members: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/suite/links/:id', requireSuiteParent, async (req, res) => {
+  try {
+    const id = /^[1-9][0-9]{0,9}$/.test(req.params.id) ? Number(req.params.id) : null;
+    if (!id) return res.status(404).json({ error: 'No such Family Dinner member', code: 'not_found' });
+    const wanted = req.body?.suite_member_id;
+    let account = null;
+    if (wanted !== null) {
+      const directory = suite.directory();
+      if (!directory) return res.status(503).json({ error: 'The household directory is unavailable', code: 'directory' });
+      account = typeof wanted === 'string' ? directory.find(member => member.memberId === wanted) : null;
+      if (!account) {
+        return res.status(400).json({ error: 'Pick a household member who has access to Family Dinner', code: 'unknown_member' });
+      }
+    }
+    // A kid's account takes only a kid's row: it would otherwise see and act as a parent. Enforced in the UPDATE, so
+    // no other request can slip in between a check and the write.
+    const kidOnly = account?.role === 'kid';
+    const { rows } = await pool.query(
+      `UPDATE family_members SET suite_member_id = $1 WHERE id = $2${kidOnly ? " AND role = 'kid'" : ''}
+       RETURNING id, name, role, avatar_emoji, suite_member_id`,
+      [wanted, id]
+    );
+    if (!rows.length) {
+      if (kidOnly) {
+        const { rows: found } = await pool.query('SELECT id FROM family_members WHERE id = $1', [id]);
+        if (found.length) return res.status(409).json({ error: 'A kid\'s household account can only be linked to a kid', code: 'kid_to_parent' });
+      }
+      return res.status(404).json({ error: 'No such Family Dinner member', code: 'not_found' });
+    }
+    console.log(`[suite-link] ${req.suiteMember.memberId} ${wanted ? `linked member ${id} to ${wanted}` : `unlinked member ${id}`}`);
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That household member is already linked to someone else', code: 'already_linked' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
