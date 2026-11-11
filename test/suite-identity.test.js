@@ -222,9 +222,10 @@ test('a parent nobody has linked reaches the link page and setup, and nothing ab
       assert.equal(res.status, 403, route);
       assert.equal((await res.json()).code, 'not_linked', route);
     }
-    // Admitted (no link routes yet, so 404 means the gate let it through).
-    assert.equal((await get('/link')).status, 404);
-    assert.equal((await get('/api/suite/links')).status, 404);
+    // Admitted: the link page and its list (test/suite-links.test.js covers them), and a link route (no GET on it,
+    // so 404 means the gate let it through).
+    assert.equal((await get('/link')).status, 200);
+    assert.equal((await get('/api/suite/links')).status, 200);
     assert.equal((await get('/api/suite/links/1')).status, 404);
     // Setup redirects home once a household exists; the gate then sends them to the link page.
     assert.equal((await get('/setup')).headers.get('location'), './');

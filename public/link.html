@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Family Dinner · Household</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="sovereign-fonts.css">
+  <link rel="stylesheet" href="sovereign-chassis.css">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="dinner-skin.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .link-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+      padding: 0.75rem 0; border-top: 1px solid var(--border, rgba(127, 127, 127, 0.25)); }
+    .link-row:first-child { border-top: 0; }
+    .link-who { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+    .link-name { font-weight: 600; overflow-wrap: anywhere; }
+    .link-row select { flex: 1 1 14rem; max-width: 22rem; min-width: 0; font-size: 1rem; }
+    /* On a phone every picker sits under its name, whatever the name's length. */
+    @media (max-width: 520px) { .link-row select { flex-basis: 100%; max-width: none; } }
+    .link-note { flex-basis: 100%; margin: 0; font-size: 0.85rem; }
+    .link-actions { display: flex; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+  <header>
+    <span style="width:2.5rem"></span>
+    <h1>🍽️ Household</h1>
+    <span style="width:2.5rem"></span>
+  </header>
+
+  <main class="admin-entry">
+    <section class="setup-card">
+      <h2>Who is who</h2>
+      <p class="admin-copy">
+        Family Dinner now knows people by their household account in Home Base.
+        Match each Dinner member to the person they are. Anyone you leave unlinked
+        is asked to find a parent when they open Family Dinner.
+      </p>
+      <div id="link-status" class="admin-status">Loading household members…</div>
+    </section>
+
+    <section class="setup-card">
+      <div id="link-rows"></div>
+    </section>
+
+    <section class="setup-card link-actions hidden" id="link-done-card">
+      <a href="." class="btn-primary" id="link-done">Open Family Dinner</a>
+    </section>
+  </main>
+
+  <script src="link.js"></script>
+</body>
+</html>
