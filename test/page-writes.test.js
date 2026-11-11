@@ -11,31 +11,57 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 
-// Every fetch(...) call in the text, with its whole argument list (balanced parentheses, so multi-line options count).
+// The end of the argument list that opens at text[open] ('('), skipping string and template literals (a ')' inside a
+// URL or message is not syntax) and following ${...} inside templates.
+function closingParen(text, open) {
+  const stack = [')'];
+  for (let i = open + 1; i < text.length; i += 1) {
+    const c = text[i];
+    const top = stack[stack.length - 1];
+    if (top === '`') {
+      if (c === '\\') i += 1;
+      else if (c === '`') stack.pop();
+      else if (c === '$' && text[i + 1] === '{') { stack.push('}'); i += 1; }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      for (i += 1; i < text.length && text[i] !== c; i += 1) if (text[i] === '\\') i += 1;
+      continue;
+    }
+    if (c === '`') stack.push('`');
+    else if (c === '(') stack.push(')');
+    else if (c === '{') stack.push('}');
+    else if (c === '[') stack.push(']');
+    else if (c === top) { stack.pop(); if (!stack.length) return i; }
+  }
+  return text.length - 1;
+}
+
+// Every fetch(...) call in the text, with its whole argument list.
 function fetchCalls(text) {
   const calls = [];
-  for (let start = text.indexOf('fetch('); start !== -1; start = text.indexOf('fetch(', start + 1)) {
-    let depth = 0;
-    let end = start + 'fetch'.length;
-    for (; end < text.length; end += 1) {
-      if (text[end] === '(') depth += 1;
-      else if (text[end] === ')' && --depth === 0) break;
-    }
-    calls.push(text.slice(start, end + 1));
+  for (const match of text.matchAll(/\bfetch\(/g)) {
+    const open = match.index + match[0].length - 1;
+    calls.push(text.slice(match.index, closingParen(text, open) + 1));
   }
   return calls;
 }
 
-const WRITE = /method:\s*'(?:POST|PUT|PATCH|DELETE)'/;
+// A call that names a method at all (literal, shorthand `{ method }`, or built) is a write unless it is a literal GET.
+const NAMES_METHOD = /\bmethod\b/;
+const LITERAL_GET = /\bmethod:\s*['"`]GET['"`]/;
 const JSON_TYPE = /'Content-Type':\s*'application\/json'/;
 
 function pageSources() {
   const pages = fs.readdirSync(PUBLIC).filter((name) => name.endsWith('.js') || name.endsWith('.html'))
     .map((name) => [name, fs.readFileSync(path.join(PUBLIC, name), 'utf8')]);
-  // The Tonight page is rendered by server.js; its script calls the API with ./api/ paths. The server's own
-  // outbound calls (OpenAI, recipe import) are not page writes.
+  // The Tonight page is rendered by server.js: its whole route, markup and script, between it and the next route.
+  // In server.js the page's backticks and ${ are escaped; unescape them so the page reads as the browser gets it.
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const tonight = fetchCalls(server).filter((call) => /^fetch\(\s*\\?[`']\.\/api\//.test(call)).join('\n');
+  const start = server.indexOf("app.get('/tonight'");
+  const end = server.indexOf("app.get('/api/tonight'");
+  assert.ok(start !== -1 && end > start, 'the Tonight route is where this test expects it');
+  const tonight = server.slice(start, end).replace(/\\`/g, '`').replace(/\\\$\{/g, '${');
   return [...pages, ['server.js (Tonight page)', tonight]];
 }
 
@@ -43,7 +69,7 @@ test('every page write says it is JSON, even with no body', () => {
   let writes = 0;
   for (const [name, text] of pageSources()) {
     for (const call of fetchCalls(text)) {
-      if (!WRITE.test(call)) continue;
+      if (!NAMES_METHOD.test(call) || LITERAL_GET.test(call)) continue;
       writes += 1;
       assert.match(call, JSON_TYPE, `${name}: ${call.replace(/\s+/g, ' ')}`);
     }
