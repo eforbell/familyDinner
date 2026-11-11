@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS family_members (
   role            TEXT CHECK (role IN ('parent', 'kid')),
   is_picky        BOOLEAN DEFAULT false,
   hates_leftovers BOOLEAN DEFAULT false,
-  avatar_emoji    TEXT DEFAULT '👤'
+  avatar_emoji    TEXT DEFAULT '👤',
+  -- The Home Base household member this is, in tailnet mode (migration 007).
+  suite_member_id TEXT UNIQUE
 );
 
 -- Canonical recipe library
