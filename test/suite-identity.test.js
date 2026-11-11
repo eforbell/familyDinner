@@ -6,6 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { createSuiteIdentity, homeBaseUid, publicPath } = require('../lib/suite-identity');
+const { listenTarget } = require('../lib/listen');
 const { app, pool, setSuiteIdentityForTests } = require('../server');
 
 const SOCKET = 'unix:/run/sovereign-apps/family-dinner/app.sock';
@@ -88,6 +89,17 @@ test('a configuration the app cannot trust refuses to start', () => {
   assert.equal(homeBaseUid('998'), 998);
   assert.throws(() => createSuiteIdentity(TAILNET), /find linked members/);
   assert.equal(createSuiteIdentity(TAILNET, unlinked).mode, 'tailnet');
+});
+
+test('tailnet mode always listens on the socket: the identity headers are trusted only there', () => {
+  // The server listens where lib/listen.js says. Every configuration tailnet mode accepts names a socket there, and a
+  // TCP listener (HOST/PORT) is never chosen while SOVEREIGN_LISTEN is set: a local process could forge the headers.
+  assert.deepEqual(listenTarget({ ...TAILNET, HOST: '127.0.0.1', PORT: '3000' }), { socket: '/run/sovereign-apps/family-dinner/app.sock' });
+  for (const listen of ['unix:/run/sovereign-apps/family-dinner/app.sock', 'unix:/tmp/x.sock']) {
+    const env = { ...TAILNET, SOVEREIGN_LISTEN: listen };
+    assert.equal(createSuiteIdentity(env, unlinked).mode, 'tailnet');
+    assert.ok(listenTarget(env).socket, listen);
+  }
 });
 
 test('tailnet mode takes writes only as JSON from the app\'s own origin', async () => {
