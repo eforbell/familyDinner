@@ -65,7 +65,7 @@ async function createMealFromRecipe() {
   if (!recipeId) return;
 
   try {
-    const res = await fetch(`../api/recipes/${recipeId}/create-meal`, { method: 'POST' });
+    const res = await fetch(`../api/recipes/${recipeId}/create-meal`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not create meal');
     await loadRecipe();

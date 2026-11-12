@@ -24,6 +24,7 @@ const {
   recipeToMealDraft,
   validateRecipePayload,
 } = require('./lib/recipe-normalize');
+const { createSuiteIdentity } = require('./lib/suite-identity');
 
 const { describe: describeListen, listen } = require('./lib/listen');
 
@@ -94,6 +95,32 @@ const DEFAULT_MAGIC_GROCERY_PROMPT = [
   'Prefer concise, clear list items and include short prep notes only when useful.',
 ].join(' ');
 const RECIPE_DETAIL_TEMPLATE = fs.readFileSync(path.join(__dirname, 'public', 'recipe.html'), 'utf8');
+
+// Which sign-in Family Dinner trusts (lib/suite-identity.js); a bad configuration refuses to start. In tailnet mode
+// every write must be JSON from the app's own origin, checked before anything reads the request, and every request
+// needs a household member a parent has linked to a Dinner family member.
+async function findLinkedMember(suiteMemberId) {
+  const { rows } = await pool.query('SELECT * FROM family_members WHERE suite_member_id = $1', [suiteMemberId]);
+  return rows[0] || null;
+}
+let suite = createSuiteIdentity(process.env, { findLinked: findLinkedMember });
+app.use((req, res, next) => suite.guard(req, res, next));
+app.use((req, res, next) => suite.requireMember(req, res, next));
+
+// In tailnet mode a vote or note is the requester's own: the linked member, never an ID or name the request names.
+// Local mode keeps the picker's choice from the request.
+function actingMemberId(req, requested) {
+  return suite.tailnet ? req.familyMember.id : requested;
+}
+function actingMemberName(req, requested) {
+  return suite.tailnet ? req.familyMember.name : requested;
+}
+// Who the pages are showing, for the Tonight page's script: the linked member in tailnet mode, nobody in local mode.
+function suiteMe(req) {
+  if (!suite.tailnet) return null;
+  const { id, name, avatar_emoji } = req.familyMember;
+  return { id, name, avatar_emoji, role: req.suiteMember.role === 'parent' ? 'parent' : 'kid' };
+}
 
 app.use(express.json());
 
@@ -512,7 +539,7 @@ app.use(async (req, res, next) => {
   if (req.method !== 'GET') return next();
   if (req.path.startsWith('/api/')) return next();
   if (req.path === '/setup' || req.path === '/setup.html') return next();
-  if (req.path === '/' || req.path === '/index.html') {
+  if (req.path === '/' || req.path === '/index.html' || req.path === '/week') {
     if (await redirectToSetupIfNeeded(req, res, 'setup')) return;
   }
   return next();
@@ -524,6 +551,8 @@ app.get('/sovereign-fonts.css', (_req, res) => {
   res.send(buildSovereignFontsCss());
 });
 
+// The link page is served by its route (/link), which checks the directory's role; its file is not a static page.
+app.get('/link.html', (_req, res) => res.redirect(303, 'link'));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 function createRecipeResponseSchema() {
@@ -1499,6 +1528,19 @@ app.get('/', async (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// The week, at its own address: in tailnet mode a kid's / goes to Tonight, so Tonight and the nav link here.
+app.get('/week', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Who the pages are showing. In tailnet mode it's the linked member, with the directory's role, and the pages skip
+// their picker; in local mode there's nobody, and the picker asks.
+app.get('/api/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!suite.tailnet) return res.json({ mode: 'local', member: null });
+  return res.json({ mode: 'tailnet', member: suiteMe(req) });
+});
+
 app.get('/setup', async (req, res) => {
   try {
     const state = await bootstrapState();
@@ -1537,9 +1579,15 @@ app.get('/api/ready', async (_req, res) => {
   }
 });
 
-app.get('/api/bootstrap', async (_req, res) => {
+app.get('/api/bootstrap', async (req, res) => {
   try {
-    res.json(await bootstrapState());
+    const state = await bootstrapState();
+    // In tailnet mode a parent nobody has linked yet may run first-run setup, so setup's status tells them only
+    // whether a household is still needed, nothing about the household's data.
+    if (suite.tailnet && !req.familyMember) {
+      return res.set('Cache-Control', 'no-store').json({ app: state.app, bootstrap: { needs_household: state.bootstrap.needs_household } });
+    }
+    res.json(state);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1869,7 +1917,7 @@ app.get('/tonight', async (req, res) => {
   </div>
   ` : ''}
 
-	  <a href="./" class="week-link">see the full week →</a>
+	  <a href="./week" class="week-link">see the full week →</a>
 	  </div>
 
 	  <script src="theme.js"></script>
@@ -1880,7 +1928,9 @@ app.get('/tonight', async (req, res) => {
     const MEAL_ID = ${mealId || 'null'};
     const orderInVotes = ${votesJson};
     const MEAL_REACTIONS = ['❤️', '👍', '👎', '🤷'];
-    let me = JSON.parse(localStorage.getItem('fd_member') || 'null');
+    // Tailnet mode: the linked member, from the server, and no picker. Local mode: whoever this device picked.
+    const SUITE_ME = ${safeScriptJson(suiteMe(req))};
+    let me = SUITE_ME || JSON.parse(localStorage.getItem('fd_member') || 'null');
     let members = [];
 
     async function init() {
@@ -2083,7 +2133,7 @@ app.put('/api/plan/day', async (req, res) => {
       date,
       mealId,
       req.body?.note ? String(req.body.note) : null,
-      req.body?.created_by ? String(req.body.created_by) : null
+      actingMemberName(req, req.body?.created_by ? String(req.body.created_by) : null)
     );
     res.json({ success: true, date, meal: await mealForDate(parseDateOnly(date)) });
   } catch (err) {
@@ -2100,7 +2150,7 @@ app.post('/api/plan/autofill', async (req, res) => {
 
   const source = req.body?.source === 'previous_week' ? 'previous_week' : 'rotation';
   const overwrite = Boolean(req.body?.overwrite);
-  const createdBy = req.body?.created_by ? String(req.body.created_by) : null;
+  const createdBy = actingMemberName(req, req.body?.created_by ? String(req.body.created_by) : null);
 
   try {
     const monday = mondayOf(parseDateOnly(weekStart));
@@ -2278,6 +2328,8 @@ app.post('/api/recipes', async (req, res) => {
   const recipe = normalizeRecipePayload(req.body);
   const validationError = validateRecipePayload(recipe);
   if (validationError) return res.status(400).json({ error: validationError });
+  // In tailnet mode the recipe is the requester's, whoever the request names.
+  if (suite.tailnet) recipe.created_by_member_id = req.familyMember.id;
 
   try {
     const recipeId = await saveRecipe(recipe);
@@ -2313,6 +2365,12 @@ app.put('/api/recipes/:id', async (req, res) => {
   if (validationError) return res.status(400).json({ error: validationError });
 
   try {
+    // In tailnet mode an edit keeps who created the recipe; the request can't change it.
+    if (suite.tailnet) {
+      const { rows } = await pool.query('SELECT created_by_member_id FROM recipes WHERE id = $1', [recipeId]);
+      if (!rows.length) return res.status(404).json({ error: 'Not found' });
+      recipe.created_by_member_id = rows[0].created_by_member_id;
+    }
     const savedRecipeId = await saveRecipe(recipe, recipeId);
     if (!savedRecipeId) return res.status(404).json({ error: 'Not found' });
     res.json(await getRecipeById(savedRecipeId));
@@ -2736,7 +2794,7 @@ app.put('/api/swap', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT 1 FROM meals WHERE id = $1', [mealId]);
     if (!rows.length) return res.status(404).json({ error: 'meal not found' });
-    await upsertPlanDay(date, mealId, note || null, created_by || null);
+    await upsertPlanDay(date, mealId, note || null, actingMemberName(req, created_by || null));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2766,11 +2824,87 @@ app.get('/api/members', async (req, res) => {
   }
 });
 
+// ── Linking household members (tailnet mode) ─────────────────────────────────
+// A parent, as Home Base's directory says now, links each Dinner family member to the household member they are.
+// The directory's role is checked on every request; the local row's role never grants this.
+
+function requireSuiteParent(req, res, next) {
+  if (!suite.tailnet) return res.status(404).json({ error: 'Not found' });
+  if (req.suiteMember?.role !== 'parent') {
+    return res.status(403).json({ error: 'Only a parent can link household members', code: 'parent_required' });
+  }
+  return next();
+}
+
+app.get('/link', (req, res, next) => {
+  if (!suite.tailnet) return next();
+  res.set('Cache-Control', 'no-store');
+  if (req.suiteMember?.role !== 'parent') return res.status(403).type('text').send('Only a parent can link household members.');
+  return res.sendFile(path.join(__dirname, 'public', 'link.html'));
+});
+
+app.get('/api/suite/links', requireSuiteParent, async (req, res) => {
+  try {
+    const directory = suite.directory();
+    if (!directory) return res.status(503).json({ error: 'The household directory is unavailable', code: 'directory' });
+    const { rows } = await pool.query('SELECT id, name, role, avatar_emoji, suite_member_id FROM family_members ORDER BY id');
+    res.set('Cache-Control', 'no-store').json({ you: req.suiteMember.memberId, directory, members: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/suite/links/:id', requireSuiteParent, async (req, res) => {
+  try {
+    const id = /^[1-9][0-9]{0,9}$/.test(req.params.id) ? Number(req.params.id) : null;
+    if (!id) return res.status(404).json({ error: 'No such Family Dinner member', code: 'not_found' });
+    const wanted = req.body?.suite_member_id;
+    let account = null;
+    if (wanted !== null) {
+      const directory = suite.directory();
+      if (!directory) return res.status(503).json({ error: 'The household directory is unavailable', code: 'directory' });
+      account = typeof wanted === 'string' ? directory.find(member => member.memberId === wanted) : null;
+      if (!account) {
+        return res.status(400).json({ error: 'Pick a household member who has access to Family Dinner', code: 'unknown_member' });
+      }
+    }
+    // A kid's account takes only a kid's row: it would otherwise see and act as a parent. Enforced in the UPDATE, so
+    // no other request can slip in between a check and the write.
+    const kidOnly = account?.role === 'kid';
+    const { rows } = await pool.query(
+      `UPDATE family_members SET suite_member_id = $1 WHERE id = $2${kidOnly ? " AND role = 'kid'" : ''}
+       RETURNING id, name, role, avatar_emoji, suite_member_id`,
+      [wanted, id]
+    );
+    if (!rows.length) {
+      if (kidOnly) {
+        const { rows: found } = await pool.query('SELECT id FROM family_members WHERE id = $1', [id]);
+        if (found.length) return res.status(409).json({ error: 'A kid\'s household account can only be linked to a kid', code: 'kid_to_parent' });
+      }
+      return res.status(404).json({ error: 'No such Family Dinner member', code: 'not_found' });
+    }
+    console.log(`[suite-link] ${req.suiteMember.memberId} ${wanted ? `linked member ${id} to ${wanted}` : `unlinked member ${id}`}`);
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That household member is already linked to someone else', code: 'already_linked' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The reactions the pages offer. Anything else is refused: a reaction is shown to everyone who opens the week.
+const MEAL_REACTIONS = new Set(['❤️', '👍', '👎', '🤷']);
+
 // POST /api/vote — react to a meal
 app.post('/api/vote', async (req, res) => {
-  const { meal_id, member_id, reaction, meal_date } = req.body;
+  const { meal_id, reaction, meal_date } = req.body;
+  const member_id = actingMemberId(req, req.body.member_id);
   if (!meal_id || !member_id || !reaction) {
     return res.status(400).json({ error: 'meal_id, member_id, and reaction required' });
+  }
+  if (!MEAL_REACTIONS.has(reaction)) {
+    return res.status(400).json({ error: 'reaction must be one of ❤️ 👍 👎 🤷' });
   }
 
   try {
@@ -2962,7 +3096,7 @@ app.post('/api/order-in', async (req, res) => {
       `INSERT INTO order_in_nights (order_date, created_by)
        VALUES ($1, $2)
        ON CONFLICT (order_date) DO NOTHING`,
-      [date, created_by || null]
+      [date, actingMemberName(req, created_by || null)]
     );
     res.json({ success: true, order_in: await orderInForDate(date) });
   } catch (err) {
@@ -2983,7 +3117,8 @@ app.delete('/api/order-in/:date', async (req, res) => {
 
 // POST /api/order-in/:date/vote — vote for a restaurant
 app.post('/api/order-in/:date/vote', async (req, res) => {
-  const { restaurant_id, member_id } = req.body;
+  const { restaurant_id } = req.body;
+  const member_id = actingMemberId(req, req.body.member_id);
   if (!restaurant_id || !member_id) {
     return res.status(400).json({ error: 'restaurant_id and member_id required' });
   }
@@ -3017,7 +3152,8 @@ app.post('/api/order-in/:date/vote', async (req, res) => {
 });
 
 app.post('/api/order-in/:date/write-in', async (req, res) => {
-  const { member_id, name, emoji } = req.body || {};
+  const { name, emoji } = req.body || {};
+  const member_id = actingMemberId(req, req.body?.member_id);
   if (!member_id) return res.status(400).json({ error: 'member_id is required' });
 
   const writeIn = parseRestaurantWriteIn(name, emoji);
@@ -3043,7 +3179,7 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
 
     let restaurantId = null;
     const { rows: existingRows } = await pool.query(
-      `SELECT id
+      `SELECT id, active
        FROM restaurants
        WHERE lower(name) = lower($1)
        ORDER BY active DESC, id ASC
@@ -3051,7 +3187,15 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
       [writeIn.name]
     );
 
-    if (existingRows.length) {
+    // In tailnet mode a kid's write-in is a vote, and may add a new place, but the list itself is a parent's: a kid
+    // votes for a listed place as it is, and can't bring back one a parent took off the list.
+    const kid = suite.tailnet && req.suiteMember.role !== 'parent';
+    if (kid && existingRows.length && !existingRows[0].active) {
+      return res.status(409).json({ error: 'A parent took that one off the list', code: 'restaurant_retired' });
+    }
+    if (kid && existingRows.length) {
+      restaurantId = existingRows[0].id;
+    } else if (existingRows.length) {
       restaurantId = existingRows[0].id;
       await pool.query(
         `UPDATE restaurants
@@ -3091,7 +3235,8 @@ app.post('/api/order-in/:date/write-in', async (req, res) => {
 app.put('/api/tonight-addon/:date', async (req, res) => {
   const dateStr = String(req.params.date || '').trim();
   const note = String(req.body?.note || '').trim();
-  const updatedBy = req.body?.updated_by ? String(req.body.updated_by).trim() : null;
+  const requestedBy = req.body?.updated_by ? String(req.body.updated_by).trim() : null;
+  const updatedBy = actingMemberName(req, requestedBy);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return res.status(400).json({ error: 'invalid date format' });
@@ -3176,9 +3321,15 @@ if (require.main === module) {
   });
 }
 
+// Tests rebuild the identity with another environment; the middleware above reads `suite` on every request.
+function setSuiteIdentityForTests(env, options) {
+  suite = createSuiteIdentity(env, { findLinked: findLinkedMember, ...options });
+}
+
 module.exports = {
   app,
   pool,
+  setSuiteIdentityForTests,
   buildDefaultOrderIn,
   buildOrderInVotes,
   dedupeRestaurants,

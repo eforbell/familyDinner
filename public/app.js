@@ -6,19 +6,35 @@ let membersCache  = [];
 let todayDate     = null;
 let tonightMealId = null;
 let weekOffset    = 0;
+// Tailnet mode: Home Base says who this is (api/me), and the picker never opens.
+let suiteTailnet  = false;
 
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadSuiteMember();
   updateWhoBtn();
   wireWeekPaging();
   wireTonightScratchpad();
   await loadWeek();
 
-  if (!currentMember) {
+  if (!currentMember && !suiteTailnet) {
     // First visit — show member picker after a brief delay so the page renders
     setTimeout(openMemberPicker, 400);
   }
 });
+
+async function loadSuiteMember() {
+  try {
+    const res = await fetch('api/me', { cache: 'no-store' });
+    if (!res.ok) return;
+    const me = await res.json();
+    if (me.mode !== 'tailnet' || !me.member) return;
+    suiteTailnet = true;
+    currentMember = me.member;
+  } catch {
+    // Local mode on an older server, or offline: the picker as before.
+  }
+}
 
 // ── Data Fetching ─────────────────────────────────────────────
 async function loadWeek() {
@@ -211,7 +227,7 @@ function buildDayCard(day) {
   let mealHtml;
   if (isOrderIn) {
     const leader = orderIn && orderIn.votes && orderIn.votes.find(v => v.count > 0);
-    mealHtml = `<span class="day-meal-name order-in-label">🛵 Order In${leader ? ` · ${leader.emoji} ${leader.name}` : ''}</span>`;
+    mealHtml = `<span class="day-meal-name order-in-label">🛵 Order In${leader ? ` · ${esc(leader.emoji || '')} ${esc(leader.name)}` : ''}</span>`;
   } else if (!meal) {
     mealHtml = '<span class="day-meal-name muted">—</span>';
   } else {
@@ -219,8 +235,8 @@ function buildDayCard(day) {
   }
 
   const metaHtml = meal && !isOrderIn
-    ? `<span style="font-size:1rem">${meal.cook || ''}</span>
-       <span style="font-size:0.95rem">${ratingEmoji(meal.kid_rating)}</span>
+    ? `<span style="font-size:1rem">${esc(meal.cook || '')}</span>
+       <span style="font-size:0.95rem">${esc(ratingEmoji(meal.kid_rating))}</span>
        ${meal.is_new ? '<span class="new-badge">★ NEW</span>' : ''}`
     : '';
 
@@ -254,7 +270,7 @@ function buildDayExpandHtml(day) {
         ${buildRestaurantVotesHtml(orderIn, day.date)}
       </div>
       ${meal && meal.is_protected ? '' : `
-      <div class="day-actions" style="margin-top:.75rem">
+      <div class="day-actions fd-parent-only" style="margin-top:.75rem">
         <button class="btn-danger" onclick="cancelOrderIn('${day.date}')">Cancel order-in</button>
       </div>`}
     `;
@@ -268,7 +284,7 @@ function buildDayExpandHtml(day) {
   if (!meal) {
     return `
       <p class="muted" style="font-size:.85rem;margin-bottom:.75rem">Nothing planned yet.</p>
-      <div class="day-actions">
+      <div class="day-actions fd-parent-only">
         <button class="btn-swap" onclick="openSwap('${day.date}')">Pick a meal</button>
         <a class="btn-ghost" href="plan">Plan the week</a>
         <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
@@ -290,8 +306,8 @@ function buildDayExpandHtml(day) {
     <div class="day-actions" style="margin-top:.75rem">
       <div class="vote-buttons" id="day-votes-${day.date}"></div>
       ${meal.recipe_id ? `<a class="btn-ghost" href="recipes/${meal.recipe_id}">Recipe</a>` : ''}
-      <button class="btn-swap" onclick="openSwap('${day.date}')">Swap ⇄</button>
-      <button class="btn-order-in" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
+      <button class="btn-swap fd-parent-only" onclick="openSwap('${day.date}')">Swap ⇄</button>
+      <button class="btn-order-in fd-parent-only" onclick="declareOrderIn('${day.date}')">🛵 Order In</button>
     </div>
     <div class="day-vote-display" id="day-vote-display-${day.date}"></div>
   `;
@@ -368,7 +384,7 @@ async function refreshVoteDisplay(displayId, mealId, btnContainerId, votes) {
 
   // Show vote pills
   display.innerHTML = votes.map(v =>
-    `<span class="vote-pill">${v.avatar_emoji} ${v.reaction}</span>`
+    `<span class="vote-pill">${esc(v.avatar_emoji || '')} ${esc(v.reaction)}</span>`
   ).join('');
 }
 
@@ -406,7 +422,7 @@ function openSwap(date) {
             }),
           });
         } else {
-          await fetch(`api/swap/${date}`, { method: 'DELETE' });
+          await fetch(`api/swap/${date}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
         }
         await loadWeek();
       } catch (e) {
@@ -420,6 +436,7 @@ function openSwap(date) {
 let onMemberPickedCallback = null;
 
 function openMemberPicker(callback) {
+  if (suiteTailnet) return;
   onMemberPickedCallback = callback || null;
   loadAndShowMembers();
   document.getElementById('member-overlay').classList.remove('hidden');
@@ -437,8 +454,8 @@ async function loadAndShowMembers() {
     }
     grid.innerHTML = membersCache.map(m =>
       `<button class="member-btn" onclick="selectMember(${m.id})">
-        <span class="member-avatar">${m.avatar_emoji}</span>
-        <span>${m.name}</span>
+        <span class="member-avatar">${esc(m.avatar_emoji || '')}</span>
+        <span>${esc(m.name)}</span>
       </button>`
     ).join('');
   } catch (e) {
@@ -513,7 +530,7 @@ async function declareOrderIn(date) {
 
 async function cancelOrderIn(date) {
   try {
-    await fetch(`api/order-in/${date}`, { method: 'DELETE' });
+    await fetch(`api/order-in/${date}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     await loadWeek();
   } catch (e) {
     console.error('Failed to cancel order-in', e);
@@ -681,7 +698,8 @@ function esc(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function fmtTime(mins) {
@@ -722,8 +740,8 @@ function buildMetaBadges(meal) {
   const cls  = kidRatingClass(meal.kid_rating);
   const desc = kidRatingDesc(meal.kid_rating);
   return [
-    meal.cook        ? `<span class="cook-badge">${meal.cook}</span>` : '',
-    meal.kid_rating  ? `<span class="kid-badge ${cls}" title="${desc}">${ratingEmoji(meal.kid_rating)} ${desc}</span>` : '',
+    meal.cook        ? `<span class="cook-badge">${esc(meal.cook)}</span>` : '',
+    meal.kid_rating  ? `<span class="kid-badge ${esc(cls)}" title="${esc(desc)}">${esc(ratingEmoji(meal.kid_rating))} ${esc(desc)}</span>` : '',
     meal.is_new      ? '<span class="new-badge">★ NEW</span>' : '',
   ].filter(Boolean).join('');
 }
