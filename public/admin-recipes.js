@@ -2,6 +2,8 @@ let recipes = [];
 let filteredRecipes = [];
 let selectedRecipeId = null;
 let importRecordId = null;
+let importController = null;
+let recipeModalOpener = null;
 
 const form = () => document.getElementById('recipe-form');
 
@@ -21,8 +23,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.target === event.currentTarget) closeRecipeModal();
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') closeRecipeModal();
+    const modal = document.getElementById('recipe-modal');
+    if (modal.classList.contains('hidden')) return;
+    if (event.key === 'Escape' && !event.isComposing) closeRecipeModal();
+    if (event.key === 'Tab') {
+      const controls = [...modal.querySelectorAll('button, input, textarea, select, a[href]')]
+        .filter(node => !node.disabled && node.type !== 'hidden' && node.getClientRects().length);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!first) return;
+      if (!controls.includes(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
   });
+  document.getElementById('recipe-import-text').addEventListener('input', updateImportTextCount);
+  document.getElementById('recipe-import-source').addEventListener('change', () => setImportSource(true));
   document.getElementById('recipe-import-btn').addEventListener('click', importRecipe);
   document.getElementById('recipe-form').addEventListener('submit', saveRecipe);
   document.getElementById('recipe-create-meal-btn').addEventListener('click', createMealFromRecipe);
@@ -45,6 +68,7 @@ async function loadRecipes() {
 
 function renderRecipeList() {
   const list = document.getElementById('recipe-list');
+  const focusedRecipeId = document.activeElement?.dataset?.id;
   if (!filteredRecipes.length) {
     list.innerHTML = '<p class="muted">No recipes found.</p>';
     return;
@@ -69,6 +93,7 @@ function renderRecipeList() {
   list.querySelectorAll('.meal-card-item').forEach(button => {
     button.addEventListener('click', () => selectRecipe(Number(button.dataset.id)));
   });
+  if (focusedRecipeId) list.querySelector(`[data-id="${focusedRecipeId}"]`)?.focus();
 }
 
 function applySearch() {
@@ -92,6 +117,7 @@ function getRecipeIdFromQuery() {
 }
 
 async function selectRecipe(recipeId) {
+  const opener = document.activeElement;
   try {
     const res = await fetch(`../api/recipes/${recipeId}`);
     const recipe = await res.json();
@@ -101,25 +127,29 @@ async function selectRecipe(recipeId) {
     renderRecipeList();
     updateEditorState(recipe);
     history.replaceState(null, '', `recipes?recipeId=${recipe.id}`);
-    openRecipeModal();
+    openRecipeModal({ opener });
   } catch (err) {
     setStatus(err.message || 'Could not load recipe.', true);
   }
 }
 
 function openRecipeModal(options = {}) {
+  recipeModalOpener = options.opener || document.activeElement;
   setModalStatus('');
   setImportPanelVisible(Boolean(options.showImport));
   document.getElementById('recipe-modal').classList.remove('hidden');
   const focusTarget = options.focusImport
     ? document.getElementById('recipe-import-url')
     : document.getElementById('recipe-title');
-  setTimeout(() => focusTarget.focus(), 40);
+  focusTarget.focus();
 }
 
 function closeRecipeModal() {
   const modal = document.getElementById('recipe-modal');
   if (modal.classList.contains('hidden')) return;
+  if (importController) importController.abort();
+  importController = null;
+  setImportBusy(false);
   modal.classList.add('hidden');
   setModalStatus('');
   selectedRecipeId = null;
@@ -128,16 +158,54 @@ function closeRecipeModal() {
   hideImportSummary();
   renderRecipeList();
   history.replaceState(null, '', 'recipes');
+  const opener = recipeModalOpener?.dataset?.id
+    ? document.getElementById('recipe-list').querySelector(`[data-id="${recipeModalOpener.dataset.id}"]`)
+    : recipeModalOpener;
+  (opener || document.getElementById('new-recipe-btn')).focus();
 }
 
 function setImportPanelVisible(isVisible) {
   document.getElementById('recipe-import-panel').classList.toggle('hidden', !isVisible);
 }
 
+function setImportSource(focus = false) {
+  const isText = document.getElementById('recipe-import-source').value === 'text';
+  document.getElementById('recipe-import-url-field').classList.toggle('hidden', isText);
+  document.getElementById('recipe-import-text-field').classList.toggle('hidden', !isText);
+  setModalStatus('');
+  if (focus) document.getElementById(isText ? 'recipe-import-text' : 'recipe-import-url').focus();
+}
+
+function resetImportSource() {
+  document.getElementById('recipe-import-source').value = 'url';
+  document.getElementById('recipe-import-url').value = '';
+  document.getElementById('recipe-import-text').value = '';
+  updateImportTextCount();
+  setImportSource();
+}
+
+function updateImportTextCount() {
+  const input = document.getElementById('recipe-import-text');
+  document.getElementById('recipe-import-text-count').textContent = `${input.value.length.toLocaleString('en-US')} / 12,000 characters`;
+  input.setAttribute('aria-invalid', String(input.value.length > 12000));
+}
+
+function setImportBusy(busy) {
+  document.getElementById('recipe-import-panel').setAttribute('aria-busy', String(busy));
+  const progress = document.getElementById('recipe-import-progress');
+  progress.textContent = busy ? 'Importing recipe…' : '';
+  if (busy) progress.focus();
+  for (const id of ['recipe-import-btn', 'recipe-import-source', 'recipe-import-url', 'recipe-import-text']) {
+    document.getElementById(id).disabled = busy;
+  }
+  form().querySelector('button[type="submit"]').disabled = busy;
+  document.getElementById('recipe-import-btn').textContent = busy ? 'Importing…' : 'Import recipe';
+}
+
 function fillForm(recipe) {
   importRecordId = null;
   document.getElementById('recipe-import-id').value = '';
-  document.getElementById('recipe-import-url').value = '';
+  resetImportSource();
   applyRecipeToForm(recipe);
   hideImportSummary();
 }
@@ -147,7 +215,7 @@ function resetForm() {
   importRecordId = null;
   form().reset();
   document.getElementById('recipe-import-id').value = '';
-  document.getElementById('recipe-import-url').value = '';
+  resetImportSource();
   setImportPanelVisible(false);
   hideImportSummary();
   setModalStatus('');
@@ -160,7 +228,7 @@ function updateEditorState(recipe) {
   document.getElementById('recipe-form-title').textContent = selectedRecipeId ? 'Edit recipe' : 'New recipe';
   document.getElementById('recipe-form-subtitle').textContent = selectedRecipeId
     ? `Editing recipe #${selectedRecipeId}. Save to update the existing record.`
-    : (importRecordId ? 'Imported recipe draft — review, fix anything, then save.' : 'Add a recipe manually or import one from a URL.');
+    : (importRecordId ? 'Imported recipe draft — review, fix anything, then save.' : 'Add a recipe manually or import from a URL or pasted text.');
 
   const viewLink = document.getElementById('recipe-view-link');
   viewLink.classList.toggle('hidden', !selectedRecipeId);
@@ -183,22 +251,33 @@ function updateEditorState(recipe) {
 }
 
 async function importRecipe() {
-  const button = document.getElementById('recipe-import-btn');
-  const url = document.getElementById('recipe-import-url').value.trim();
-  if (!url) {
-    setModalStatus('Paste a recipe URL first.');
+  if (importController) return;
+  const isText = document.getElementById('recipe-import-source').value === 'text';
+  const rawValue = document.getElementById(isText ? 'recipe-import-text' : 'recipe-import-url').value;
+  const value = rawValue.trim();
+  if (!value) {
+    setModalStatus(isText ? 'Paste recipe text first.' : 'Paste a recipe URL first.');
+    return;
+  }
+  if (isText && rawValue.length > 12000) {
+    setModalStatus('Recipe text must be 12,000 characters or fewer.');
     return;
   }
 
-  button.disabled = true;
-  button.textContent = 'Importing…';
+  const controller = new AbortController();
+  importController = controller;
+  setModalStatus('');
+  setImportBusy(true);
+  let focusOnRetry = false;
   try {
     const res = await fetch('../api/recipes/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify(isText ? { text: value } : { url: value }),
+      signal: controller.signal,
     });
     const data = await res.json();
+    if (importController !== controller) return;
     if (!res.ok) throw new Error(data.error || 'Recipe import failed');
 
     selectedRecipeId = null;
@@ -211,11 +290,18 @@ async function importRecipe() {
     renderRecipeList();
     setStatus('Recipe imported into the editor. Review and save when ready.', false);
     setModalStatus('');
+    document.getElementById('recipe-title').focus();
   } catch (err) {
-    setModalStatus(err.message || 'Recipe import failed.');
+    if (importController === controller && err.name !== 'AbortError') {
+      setModalStatus(err.message || 'Recipe import failed.');
+      focusOnRetry = true;
+    }
   } finally {
-    button.disabled = false;
-    button.textContent = 'Import recipe';
+    if (importController === controller) {
+      importController = null;
+      setImportBusy(false);
+      if (focusOnRetry) document.getElementById(isText ? 'recipe-import-text' : 'recipe-import-url').focus();
+    }
   }
 }
 
@@ -242,9 +328,12 @@ function applyRecipeToForm(recipe) {
 function showImportSummary(summary) {
   const panel = document.getElementById('recipe-import-summary');
   panel.classList.remove('hidden');
-  document.getElementById('recipe-import-meta').textContent = summary.used_json_ld
+  document.getElementById('recipe-import-meta').textContent = summary.source_type === 'text'
+    ? `Imported with ${summary.model_used} from pasted text. Review the draft before saving.`
+    : summary.used_json_ld
     ? `Imported with ${summary.model_used}. JSON-LD was available and cleanup ran.`
     : `Imported with ${summary.model_used}. The source needed extraction from page text.`;
+  if (summary.warning) document.getElementById('recipe-import-meta').textContent += ` ${summary.warning}`;
 }
 
 function hideImportSummary() {
@@ -279,6 +368,7 @@ function buildPayload() {
 
 async function saveRecipe(event) {
   event.preventDefault();
+  if (importController) return;
 
   try {
     const payload = buildPayload();

@@ -62,7 +62,7 @@
       <div class="meal-editor-head meal-modal-head">
         <div>
           <h2 id="recipe-form-title">New recipe</h2>
-          <p id="recipe-form-subtitle" class="muted">Add a recipe manually or import one from a URL.</p>
+          <p id="recipe-form-subtitle" class="muted">Add a recipe manually or import from a URL or pasted text.</p>
         </div>
         <button id="recipe-modal-close" class="btn-ghost meal-modal-close" type="button" aria-label="Close editor">✕</button>
       </div>
@@ -70,16 +70,35 @@
       <section id="recipe-import-panel" class="magic-meal-panel recipe-import-panel">
         <div class="meal-editor-head">
           <div>
-            <h3>Import from URL</h3>
-            <p class="muted">Paste a recipe URL, strip the story, and review the cleaned recipe before saving.</p>
+            <h3>Import recipe</h3>
+            <p class="muted">Choose a source, then review the cleaned recipe before saving.</p>
           </div>
           <button id="recipe-import-btn" class="btn-primary" type="button">Import recipe</button>
         </div>
 
         <label class="form-field">
+          <span>Import source</span>
+          <select id="recipe-import-source">
+            <option value="url">Import from URL</option>
+            <option value="text">Import from text</option>
+          </select>
+        </label>
+
+        <label id="recipe-import-url-field" class="form-field">
           <span>Recipe URL</span>
           <input id="recipe-import-url" type="url" placeholder="https://example.com/recipe">
         </label>
+
+        <div id="recipe-import-text-field" class="hidden">
+          <label class="form-field">
+            <span>Recipe text</span>
+            <textarea id="recipe-import-text" rows="8" aria-describedby="recipe-import-text-help recipe-import-text-count" placeholder="Paste a recipe from a message, notes, or anywhere else…"></textarea>
+          </label>
+          <p id="recipe-import-text-count" class="muted">0 / 12,000 characters</p>
+          <p id="recipe-import-text-help" class="muted">No special format needed. Include a title, description, ingredients, and preparation or cooking steps if you have them. Up to 12,000 characters. Sent to the configured AI service to create a draft.</p>
+        </div>
+
+        <p id="recipe-import-progress" class="muted" role="status" tabindex="-1"></p>
 
         <div id="recipe-import-summary" class="magic-result hidden">
           <div class="vote-label">Import summary</div>
@@ -87,7 +106,7 @@
         </div>
       </section>
 
-      <p id="recipe-modal-status" class="admin-status is-error hidden"></p>
+      <p id="recipe-modal-status" class="admin-status is-error hidden" role="alert"></p>
 
       <form id="recipe-form" class="meal-form">
         <input id="recipe-import-id" type="hidden">
