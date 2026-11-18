@@ -29,7 +29,7 @@ No build step. Single-process app.
 - `/tonight` — simple tonight-only view
 - `/admin` — rotation admin for the repeating 3-week plan
 - `/admin/meals` — meal library admin and Magic Meal
-- `/recipes` — recipe library, manual entry, and URL import
+- `/recipes` — recipe library, manual entry, and URL or pasted-text import
 - `/recipes/:id` — kitchen-friendly recipe detail page
 
 ## API Highlights
@@ -115,6 +115,28 @@ Optional / current production use:
 - `OPENAI_RECIPE_MODEL`
 
 For Magic Meal and Magic Grocery, `OPENAI_API_KEY` must be set. `OPENAI_MODEL=gpt-4o-mini` is a good default.
+
+## Importing Recipes
+
+In **Recipe Builder → Import recipe**, choose **Import from URL** (the default)
+or **Import from text**. Paste recipe notes, a message, or any unformatted recipe
+text; headings and ordering are optional. Include ingredients and cooking steps
+for a usable draft. The limit is 12,000 characters; longer input is rejected,
+not silently truncated.
+
+Both modes reuse the configured **recipe import** and **recipe detail** prompts
+from AI settings and the same `OPENAI_RECIPE_MODEL` (falling back to `OPENAI_MODEL`).
+Text mode adds source-specific guidance and requires the server's `OPENAI_API_KEY`.
+The pasted text is sent to the configured OpenAI model; URLs inside it are not
+fetched. Text drafts have no website/image attribution; you can add it in the editor.
+Review/edit the extracted fields and explicitly **Save recipe** to add the record.
+Closing the modal cancels the browser request and prevents a late response from
+overwriting a new draft (server-side extraction may already be in progress).
+
+URL import retains its existing JSON-LD/heuristic fallback when no key is configured.
+Apply migrations (`npm run db:migrate`) before deploying this feature: migration
+`008_recipe_text_import.sql` allows import audit records without a source URL.
+Tests mock all model calls; no real API key is needed to run `npm test`.
 
 ## Database Notes
 

@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS recipe_steps (
 CREATE TABLE IF NOT EXISTS recipe_imports (
   id              SERIAL PRIMARY KEY,
   recipe_id       INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
-  source_url      TEXT NOT NULL,
+  source_url      TEXT,
   fetch_status    TEXT NOT NULL,
   extractor_model TEXT,
   raw_text_excerpt TEXT,

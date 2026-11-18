@@ -273,3 +273,14 @@ test('in tailnet mode what a parent plans or creates is signed with their own li
     assert.equal((await call('PUT', '/api/recipes/8', PARENT_HEADERS, recipe)).status, 404);
   });
 });
+
+test('kids cannot import recipes from either URLs or pasted text in tailnet mode', async () => {
+  const db = new Db();
+  await withServer(TAILNET, db, async call => {
+    for (const body of [{ url: 'https://example.com/recipe' }, { text: 'Rice: simmer in water.' }]) {
+      const res = await call('POST', '/api/recipes/import', KID_HEADERS, body);
+      assert.equal(res.status, 403);
+    }
+    assert.equal(db.writes.length, 0);
+  });
+});
